@@ -5,7 +5,6 @@ a reverse proxy.
 
 WARNING: not completely tested at the moment
 
-
 Docker and docker-compose are used to set up environments.
 
 Vaadin application is based on Spring Boot with embedded Tomcat.
@@ -44,7 +43,11 @@ The scenarios are replicated for the following reverse proxy configuration:
 └── my-app (VAADIN Application)
 ```
 
-To test a configuration enter the directory and run `docker-compose up`.
+## Run a scenario
+
+To test a configuration enter the specific directory and run `docker-compose up`
+.
+
 Vaadin application will be reachable at `http://localhost:8080`, whereas the
 proxy server can be accessed at `http://localhost:9090`.
 
