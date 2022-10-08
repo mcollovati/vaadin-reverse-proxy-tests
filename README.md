@@ -3,7 +3,9 @@
 A collection of quick and dirty configurations to test Vaadin application behind
 a reverse proxy.
 
-WARNING: not completely tested at the moment
+WARNING: this repository does not contain complete configurations nor best practices.
+The aim is to set up a Vaadin application behind a reverse proxy in an easy and quick way in order to ensure that main functionalities are working correctly. 
+Configurations are not completely tested at the moment
 
 Docker and docker-compose are used to set up environments.
 
