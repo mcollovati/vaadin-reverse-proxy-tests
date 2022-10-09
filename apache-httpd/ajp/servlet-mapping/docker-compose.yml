@@ -6,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      VAADIN_ROOT_MAPPING: "/ui/*"
+      VAADIN_URL_MAPPING: /ui/*
       TOMCAT_AJP_PORT: 8009
       TOMCAT_AJP_ADDRESS: 0.0.0.0
   http:

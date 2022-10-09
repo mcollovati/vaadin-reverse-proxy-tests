@@ -6,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      VAADIN_ROOT_MAPPING: "/ui/*"
+      VAADIN_URL_MAPPING: /ui/*
   http:
     image: "httpd:latest"
     ports:
