@@ -29,6 +29,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 
 * Apache HTTPD
 * Apache HTTPD with AJP
+* NGINX
 
 ```
 ├── apache-httpd
@@ -42,6 +43,13 @@ The scenarios are replicated for the following reverse proxy configuration:
 │       ├── root-context-push-url
 │       ├── servlet-mapping
 │       └── servlet-mapping-push-url
+├── nginx
+│   └── http
+│       ├── root-context
+│       ├── root-context-push-url
+│       ├── servlet-mapping
+│       └── servlet-mapping-push-url
+│
 └── my-app (VAADIN Application)
 ```
 
