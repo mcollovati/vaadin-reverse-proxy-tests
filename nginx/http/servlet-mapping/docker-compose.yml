@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+  vaadin:
+    image: vaadin/my-app
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      - VAADIN_URL_MAPPING=/ui/*
+  web:
+    image: nginx
+    volumes:
+      - ../../templates/default.conf.template:/etc/nginx/templates/default.conf.template
+    ports:
+      - "9090:80"
+    environment:
+      - VAADIN_PATH=/ui/
