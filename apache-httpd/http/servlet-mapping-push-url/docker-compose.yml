@@ -7,7 +7,7 @@ services:
       - "8080:8080"
     environment:
       VAADIN_URL_MAPPING: /ui/*
-      VAADIN_PUSH_URL: "/VAADIN/push"
+      VAADIN_PUSH_URL: /VAADIN/push
   http:
     image: "httpd:latest"
     ports:

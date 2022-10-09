@@ -6,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      VAADIN_PUSH_URL: "/VAADIN/push"
+      VAADIN_PUSH_URL: /VAADIN/push
   http:
     image: "httpd:latest"
     ports:
