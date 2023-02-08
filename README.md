@@ -24,6 +24,9 @@ subdirectory:
 * Vaadin application on custom servlet mapping (`/ui/*`)
 * Vaadin application on custom servlet mapping (`/ui/*`) with custom PUSH
   url (`/VAADIN/push`)
+* Two Vaadin application on ROOT context mapped by the reverse proxy with 
+  different prefixes (`/ui1/` and `/ui2`)
+ 
 
 The scenarios are replicated for the following reverse proxy configuration:
 
@@ -47,6 +50,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   └── http
 │       ├── root-context
 │       ├── root-context-push-url
+│       ├── multiple-root-context
 │       ├── servlet-mapping
 │       └── servlet-mapping-push-url
 │

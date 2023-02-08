@@ -5,6 +5,8 @@ import com.example.application.components.appnav.AppNav;
 import com.example.application.components.appnav.AppNavItem;
 import com.example.application.views.about.AboutView;
 import com.example.application.views.helloworld.HelloWorldView;
+import org.springframework.beans.factory.annotation.Value;
+
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
 import com.vaadin.flow.component.html.Footer;
@@ -20,9 +22,12 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
  */
 public class MainLayout extends AppLayout {
 
+
+    private String appName;
     private H2 viewTitle;
 
-    public MainLayout() {
+    public MainLayout(@Value("${app.name:My App}") String appName) {
+        this.appName = appName;
         setPrimarySection(Section.DRAWER);
         addDrawerContent();
         addHeaderContent();
@@ -39,7 +44,7 @@ public class MainLayout extends AppLayout {
     }
 
     private void addDrawerContent() {
-        H1 appName = new H1("My App");
+        H1 appName = new H1(this.appName);
         appName.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.Margin.NONE);
         Header header = new Header(appName);
 

@@ -1,6 +1,8 @@
 package com.example.application.views.helloworld;
 
 import com.example.application.views.MainLayout;
+import org.springframework.beans.factory.annotation.Value;
+
 import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.notification.Notification;
