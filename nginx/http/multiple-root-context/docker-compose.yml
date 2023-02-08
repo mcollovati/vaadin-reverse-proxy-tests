@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  vaadin1:
+    image: vaadin/my-app
+    build: ../../../my-app
+    environment:
+      - APP_NAME=My App One
+      - SERVER_SERVLET_SESSION_COOKIE_NAME=JSIDONE
+    ports:
+      - "8080:8080"
+  vaadin2:
+    image: vaadin/my-app
+    build: ../../../my-app
+    environment:
+      - APP_NAME=The other app
+      - SERVER_SERVLET_SESSION_COOKIE_NAME=JSIDTWO
+    ports:
+      - "7080:8080"
+  web:
+    image: nginx
+    volumes:
+      - ./default.conf.template:/etc/nginx/templates/default.conf.template
+    ports:
+      - "9090:80"
+    environment:
+      - VAADIN1_PATH=/ui1
+      - VAADIN2_PATH=/ui2
