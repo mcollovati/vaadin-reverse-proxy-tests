@@ -1,37 +1,50 @@
 package com.example.application.views.helloworld;
 
-import com.example.application.views.MainLayout;
-import org.springframework.beans.factory.annotation.Value;
+import com.example.application.services.GreetingService;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 import com.vaadin.flow.component.Key;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
-import com.vaadin.flow.router.RouteAlias;
 
-@PageTitle("Hello World")
-@Route(value = "hello", layout = MainLayout.class)
-@RouteAlias(value = "", layout = MainLayout.class)
+@PageTitle("Hello World Flow")
+@Route(value = "hello-flow")
+@Menu(title = "Hello World Flow", icon = "globe", order = 10)
 public class HelloWorldView extends HorizontalLayout {
 
-    private TextField name;
-    private Button sayHello;
+    private final transient GreetingService service;
+    private final TextField name;
 
-    public HelloWorldView() {
+    public HelloWorldView(GreetingService service) {
+        this.service = service;
         name = new TextField("Your name");
-        sayHello = new Button("Say hello");
+        Button sayHello = new Button("Say hello");
         sayHello.addClickListener(e -> {
-            Notification.show("Hello " + name.getValue());
+            Notification.show(this.service.sayHello(name.getValue()));
         });
         sayHello.addClickShortcut(Key.ENTER);
 
-        setMargin(true);
-        setVerticalComponentAlignment(Alignment.END, name, sayHello);
+        Button sayHelloInternational = new Button(
+                "Say hello in many languages");
+        sayHelloInternational.addClickListener(e -> {
+            UI ui = UI.getCurrent();
+            Scheduler uiAccessScheduler = Schedulers
+                    .fromExecutor(task -> ui.access(task::run));
+            this.service.internationalSayHello(name.getValue())
+                    .publishOn(uiAccessScheduler).subscribe(Notification::show);
+        });
 
-        add(name, sayHello);
+        setMargin(true);
+        setDefaultVerticalComponentAlignment(Alignment.END);
+
+        add(name, sayHello, sayHelloInternational);
     }
 
 }
