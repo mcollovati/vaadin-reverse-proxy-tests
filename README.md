@@ -38,6 +38,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 ├── apache-httpd
 │   ├── ajp
 │   │   ├── root-context
+│   │   ├── root-context
 │   │   ├── root-context-push-url
 │   │   ├── servlet-mapping
 │   │   └── servlet-mapping-push-url
@@ -59,16 +60,16 @@ The scenarios are replicated for the following reverse proxy configuration:
 
 ## Run a scenario
 
-To test a configuration enter the specific directory and run `docker-compose up`
+To test a configuration enter the specific directory and run `docker compose up`
 .
 
 Vaadin application will be reachable at `http://localhost:8080`, whereas the
 proxy server can be accessed at `http://localhost:9090`.
 
 If you change the Vaadin application (`my-app`), remember to rebuild the docker
-image by typing `docker-compose build`.
+image by typing `docker compose build`.
 
-To destroy the containers created during the tests type `docker-compose down`
+To destroy the containers created during the tests type `docker compose down`
 
 ## Use local Vaadin SNAPSHOT
 
@@ -86,3 +87,11 @@ Then build the docker image and tag it as `vaadin/my-app`
 ```
 docker build -f Dockerfile_localBuild -t vaadin/my-app .
 ```
+
+## Apache HTTPD notes
+
+For simplicity, the proxy configuration are set in a `<Location>` section, so
+the `ProxyPass` directives do the path argument is omitted and obtained from
+the `<Location>`, e.g. `ProxyPass http://vaadin:8080/`.
+In the configuration has to be used in other sections, the path should be
+explicitly specified, e.g. `ProxyPass /app/ http://vaadin:8080/app/`.
