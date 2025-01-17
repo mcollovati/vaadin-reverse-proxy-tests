@@ -1,5 +1,5 @@
 # Stage that builds the application, a prerequisite for the running stage
-FROM maven:3-openjdk-17-slim as build
+FROM maven:3-openjdk-17-slim AS build
 
 # Stop running as root at this point
 RUN useradd -m myuser
@@ -28,4 +28,4 @@ COPY --from=build /usr/src/app/target/*.jar /usr/app/app.jar
 RUN useradd -m myuser
 USER myuser
 EXPOSE 8080
-CMD java -jar /usr/app/app.jar
+CMD [ "java", "-jar", "/usr/app/app.jar" ]
