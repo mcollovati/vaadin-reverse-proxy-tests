@@ -88,7 +88,7 @@ Then build the docker image and tag it as `vaadin/my-app`
 docker build -f Dockerfile_localBuild -t vaadin/my-app .
 ```
 
-## Apache HTTPD notes
+## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so
 the `ProxyPass` directives obtaine the path from the `<Location>`, 
@@ -114,3 +114,19 @@ This means that if the proxied content contains absolute URL references,
 they will bypass the proxy. To rewrite HTML content to match the proxy,
 you must load and enable `mod_proxy_html`.
 
+By default, the websocket connection will be closed if the proxied server does
+not transmit any data within 60 seconds. Vaadin PUSH is configured to
+periodically send heartbeat messages over WebSocket every 60 seconds, so the
+connection should not be closed.
+If the default is not working correctly, the timeout can be increased setting the
+`timeout` parameter in the `ProxyPass` directive (e.g. `ProxyPass / http://vaadin:8080/ upgrade=websocket timeout=90`)
+or by configuring the `ProxyTimeout` directive (e.g. `ProxyTimeout 90`).
+
+## nginx Notes
+
+By default, the websocket connection will be closed if the proxied server does
+not transmit any data within 60 seconds. Vaadin PUSH is configured to
+periodically send heartbeat messages over WebSocket every 60 seconds, so the
+connection should not be closed. 
+If the default is not working correctly, the timeout can be increased with the
+`proxy_read_timeout` directive.
