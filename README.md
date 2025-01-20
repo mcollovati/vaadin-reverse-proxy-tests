@@ -91,7 +91,26 @@ docker build -f Dockerfile_localBuild -t vaadin/my-app .
 ## Apache HTTPD notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so
-the `ProxyPass` directives do the path argument is omitted and obtained from
-the `<Location>`, e.g. `ProxyPass http://vaadin:8080/`.
-In the configuration has to be used in other sections, the path should be
+the `ProxyPass` directives obtaine the path from the `<Location>`, 
+e.g. `ProxyPass http://vaadin:8080/`.
+If the configuration has to be used in other sections, the path should be
 explicitly specified, e.g. `ProxyPass /app/ http://vaadin:8080/app/`.
+
+However, usage of `RewriteRule` in Location is discouraged and should be avoided.
+From the Apache HTTPS documentation:
+
+> Although rewrite rules are syntactically permitted in `<Location>` and `<Files>`
+> sections (including their regular expression counterparts), this should never
+> be necessary and is unsupported. A likely feature to break in these contexts
+> is relative substitutions.
+
+For the mentioned reason, the example that requires rewrite rules do not make
+use of `<Location>` directive.
+
+Only `Location`, `Content-Location` and `URI` headers in the HTTP response
+will be rewritten. Apache httpd will not rewrite other response headers,
+nor will it by default rewrite URL references inside HTML pages.
+This means that if the proxied content contains absolute URL references,
+they will bypass the proxy. To rewrite HTML content to match the proxy,
+you must load and enable `mod_proxy_html`.
+
