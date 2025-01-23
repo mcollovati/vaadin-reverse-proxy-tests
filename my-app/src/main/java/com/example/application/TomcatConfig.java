@@ -26,7 +26,7 @@ public class TomcatConfig implements WebServerFactoryCustomizer<TomcatServletWeb
     public void customize(TomcatServletWebServerFactory factory) {
         Connector ajpConnector = new Connector(PROTOCOL);
         ajpConnector.setPort(ajpPort);
-        AbstractAjpProtocol ajpProtocol = (AbstractAjpProtocol) ajpConnector.getProtocolHandler();
+        AbstractAjpProtocol<?> ajpProtocol = (AbstractAjpProtocol<?>) ajpConnector.getProtocolHandler();
         ajpProtocol.setSecretRequired(false);
         ajpProtocol.setAddress(ajpAddress);
         factory.addAdditionalTomcatConnectors(ajpConnector);

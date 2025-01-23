@@ -91,7 +91,7 @@ docker build -f Dockerfile_localBuild -t vaadin/my-app .
 ## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so
-the `ProxyPass` directives obtaine the path from the `<Location>`, 
+the `ProxyPass` directives obtains the path from the `<Location>`, 
 e.g. `ProxyPass http://vaadin:8080/`.
 If the configuration has to be used in other sections, the path should be
 explicitly specified, e.g. `ProxyPass /app/ http://vaadin:8080/app/`.

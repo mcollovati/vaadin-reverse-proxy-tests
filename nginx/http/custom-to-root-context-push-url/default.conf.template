@@ -1,3 +1,6 @@
+# Mapping used to populate the 'Connection' header
+# If $http_upgrade has a not blank value, then $connection_upgrade is set to 'upgrade',
+# otherwise value will be 'close'
 map $http_upgrade $connection_upgrade {
     default upgrade;
     '' close;
@@ -8,15 +11,27 @@ server {
     listen       80;
     server_name  localhost;
 
-    location ${VAADIN_PATH} {
+    location /app/ {
         proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;
         proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header        X-Forwarded-Proto $scheme;
+        proxy_set_header        Upgrade $http_upgrade;
+        proxy_set_header        Connection $connection_upgrade;
 
-        proxy_pass http://vaadin:8080${VAADIN_PATH};
+        proxy_pass http://vaadin:8080/;
+
+        proxy_cookie_path /app /;
+
+        # Can be tuned if the Vaadin PUSH websocket gets closed unexpectedly
+        # proxy_read_timeout 90
     }
-    location ~* "(${VAADIN_PUSH_PATH}|${VAADIN_PATH}HILLA/push)" {
+
+    location ~* ^/app/(VAADIN|HILLA)/push$ {
+
+        rewrite ^/app/(.*)      /$1 break;
+
+        proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;
         proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header        X-Forwarded-Proto $scheme;
@@ -25,4 +40,5 @@ server {
 
         proxy_pass http://vaadin:8080;
     }
+
 }
