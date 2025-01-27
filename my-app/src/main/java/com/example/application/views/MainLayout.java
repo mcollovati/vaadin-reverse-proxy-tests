@@ -16,6 +16,7 @@ import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
 import com.vaadin.flow.router.Layout;
+import com.vaadin.flow.server.VaadinRequest;
 import com.vaadin.flow.server.menu.MenuConfiguration;
 import com.vaadin.flow.server.menu.MenuEntry;
 import com.vaadin.flow.shared.ui.Transport;
@@ -27,11 +28,12 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
 @Layout
 public class MainLayout extends AppLayout {
 
-    private String appName;
-    private H2 viewTitle;
+    private final String appName;
+    private final H2 viewTitle;
 
     public MainLayout(@Value("${app.name:My App}") String appName) {
         this.appName = appName;
+        this.viewTitle = new H2();
         setPrimarySection(Section.DRAWER);
         addDrawerContent();
         addHeaderContent();
@@ -41,7 +43,6 @@ public class MainLayout extends AppLayout {
         DrawerToggle toggle = new DrawerToggle();
         toggle.getElement().setAttribute("aria-label", "Menu toggle");
 
-        viewTitle = new H2();
         viewTitle.addClassNames(LumoUtility.FontSize.LARGE,
                 LumoUtility.Margin.NONE);
 

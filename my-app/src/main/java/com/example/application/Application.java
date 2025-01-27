@@ -37,6 +37,24 @@ public class Application implements AppShellConfigurator {
     }
 
     @Bean
+    FilterRegistrationBean<?> redirectTest() {
+        FilterRegistrationBean<OncePerRequestFilter> registrationBean = new FilterRegistrationBean<>(
+                new OncePerRequestFilter() {
+
+                    @Override
+                    protected void doFilterInternal(HttpServletRequest request,
+                                                    HttpServletResponse response,
+                                                    FilterChain filterChain)
+                            throws ServletException, IOException {
+                        response.sendRedirect(request.getContextPath() + "/hello-flow");
+                    }
+                });
+        registrationBean.addUrlPatterns("/test-redirect");
+        registrationBean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registrationBean;
+    }
+
+    @Bean
     @ConditionalOnProperty(name = "vaadin.url-mapping")
     FilterRegistrationBean<?> publicImagesAliasFilter(@Value("${vaadin.url-mapping}") String urlMapping) {
         String baseMapping = urlMapping.replaceFirst("/\\*$", "");
