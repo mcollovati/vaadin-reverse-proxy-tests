@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
 import java.io.IOException;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -43,10 +44,10 @@ public class Application implements AppShellConfigurator {
 
                     @Override
                     protected void doFilterInternal(HttpServletRequest request,
-                                                    HttpServletResponse response,
-                                                    FilterChain filterChain)
-                            throws ServletException, IOException {
-                        response.sendRedirect(request.getContextPath() + "/hello-flow");
+                            HttpServletResponse response,
+                            FilterChain filterChain) throws IOException {
+                        response.sendRedirect(
+                                request.getContextPath() + "/hello-flow");
                     }
                 });
         registrationBean.addUrlPatterns("/test-redirect");
@@ -56,18 +57,19 @@ public class Application implements AppShellConfigurator {
 
     @Bean
     @ConditionalOnProperty(name = "vaadin.url-mapping")
-    FilterRegistrationBean<?> publicImagesAliasFilter(@Value("${vaadin.url-mapping}") String urlMapping) {
+    FilterRegistrationBean<?> publicImagesAliasFilter(
+            @Value("${vaadin.url-mapping}") String urlMapping) {
         String baseMapping = urlMapping.replaceFirst("/\\*$", "");
         FilterRegistrationBean<OncePerRequestFilter> registrationBean = new FilterRegistrationBean<>(
                 new OncePerRequestFilter() {
 
                     @Override
                     protected void doFilterInternal(HttpServletRequest request,
-                                                    HttpServletResponse response,
-                                                    FilterChain filterChain)
+                            HttpServletResponse response,
+                            FilterChain filterChain)
                             throws ServletException, IOException {
                         request.getRequestDispatcher(request.getRequestURI()
-                                        .substring(baseMapping.length()))
+                                .substring(baseMapping.length()))
                                 .forward(request, response);
                     }
                 });

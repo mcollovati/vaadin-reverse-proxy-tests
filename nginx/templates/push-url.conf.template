@@ -15,6 +15,7 @@ server {
         proxy_set_header        X-Forwarded-Proto $scheme;
 
         proxy_pass http://vaadin:8080${VAADIN_PATH};
+        proxy_redirect $scheme://$host${VAADIN_PATH} $scheme://$http_host${VAADIN_PATH};
     }
     location ~* "(${VAADIN_PUSH_PATH}|${VAADIN_PATH}HILLA/push)" {
         proxy_set_header        X-Real-IP $remote_addr;

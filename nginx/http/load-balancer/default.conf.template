@@ -5,13 +5,22 @@ map $http_upgrade $connection_upgrade {
     default upgrade;
     '' close;
 }
+upstream application_balancer {
+    server vaadin-1:8080;
+    server vaadin-2:8080;
+
+    # Using ip_hash for persistent sessions since sticky directive is available
+    # only for commercial subscription
+    #sticky cookie ROUTEID path=/ httponly;
+    ip_hash;
+}
 
 server {
 
     listen       80;
     server_name  localhost;
 
-    location /app/ {
+    location / {
         proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;
         proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -19,11 +28,12 @@ server {
         proxy_set_header        Upgrade $http_upgrade;
         proxy_set_header        Connection $connection_upgrade;
 
-        proxy_pass http://vaadin:8080/;
-        proxy_redirect $scheme://$host/ $scheme://$http_host/app/;
-        proxy_cookie_path / /app;
+        proxy_pass http://application_balancer/;
+        proxy_redirect $scheme://$host/ $scheme://$http_host/;
+
 
         # Can be tuned if the Vaadin PUSH websocket gets closed unexpectedly
         # proxy_read_timeout 90
     }
+
 }

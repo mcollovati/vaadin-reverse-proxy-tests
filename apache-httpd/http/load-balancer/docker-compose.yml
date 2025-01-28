@@ -1,20 +1,22 @@
-version: "3.9"
 services:
-  vaadin:
+  vaadin-1:
     image: vaadin/my-app
     build: ../../../my-app
     ports:
       - "8080:8080"
     environment:
-      TOMCAT_AJP_PORT: 8009
-      TOMCAT_AJP_ADDRESS: 0.0.0.0
-#      TOMCAT_AJP_SECRET: mysecret
+      APP_NAME: My App on vaadin-1
+  vaadin-2:
+    image: vaadin/my-app
+    build: ../../../my-app
+    ports:
+      - "7070:8080"
+    environment:
+      APP_NAME: My App on vaadin-2
   http:
     image: "httpd:latest"
     ports:
       - "9090:80"
-#    environment:
-#      TOMCAT_AJP_SECRET: mysecret
     volumes:
       - ../../httpd.conf:/usr/local/apache2/conf/httpd.conf
       - ./vaadin.conf:/usr/local/apache2/conf/extra/httpd-vaadin-http.conf

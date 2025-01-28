@@ -29,14 +29,22 @@ public class TomcatConfig {
         @Value("${tomcat.ajp.address:::}") // Defined on application.properties
         private InetAddress ajpAddress;
 
+        @Value("${tomcat.ajp.secret:}") // Defined on application.properties
+        private String ajpSecret;
+
         @Override
         public void customize(TomcatServletWebServerFactory factory) {
             Connector ajpConnector = new Connector(PROTOCOL);
             ajpConnector.setPort(ajpPort);
             AbstractAjpProtocol<?> ajpProtocol = (AbstractAjpProtocol<?>) ajpConnector
                     .getProtocolHandler();
-            ajpProtocol.setSecretRequired(false);
             ajpProtocol.setAddress(ajpAddress);
+            if (ajpSecret != null && !ajpSecret.isBlank()) {
+                ajpProtocol.setSecret(ajpSecret);
+            } else {
+                ajpProtocol.setSecretRequired(false);
+            }
+
             factory.addAdditionalTomcatConnectors(ajpConnector);
         }
     }
@@ -49,18 +57,12 @@ public class TomcatConfig {
 
         @Override
         public void customize(Context context) {
-            System.out
-                    .println("============================== JVM ROUTE CONFIG "
-                            + jvmRoute);
             Manager manager = context.getManager();
             if (manager == null) {
                 manager = new StandardManager();
                 context.setManager(manager);
             }
             if (manager instanceof ManagerBase managerBase) {
-                System.out.println(
-                        "============================== JVM ROUTE CONFIG SET "
-                                + jvmRoute);
                 managerBase.getEngine().setJvmRoute(jvmRoute);
             }
         }
