@@ -37,24 +37,46 @@ The scenarios are replicated for the following reverse proxy configuration:
 ```
 ├── apache-httpd
 │   ├── ajp
-│   │   ├── root-context
+│   │   ├── custom-context
+│   │   ├── custom-context-push-url
+│   │   ├── custom-to-root-context
+│   │   ├── custom-to-root-context-push-url
+│   │   ├── load-balancer
 │   │   ├── root-context
 │   │   ├── root-context-push-url
+│   │   ├── root-to-custom-context
+│   │   ├── root-to-custom-context-push-url
 │   │   ├── servlet-mapping
 │   │   └── servlet-mapping-push-url
 │   └── http
+│       ├── custom-context
+│       ├── custom-context-push-url
+│       ├── custom-to-root-context
+│       ├── custom-to-root-context-push-url
+│       ├── load-balancer
 │       ├── root-context
+│       ├── root-context-legacy
 │       ├── root-context-push-url
+│       ├── root-to-custom-context
+│       ├── root-to-custom-context-push-url
 │       ├── servlet-mapping
 │       └── servlet-mapping-push-url
 ├── nginx
 │   └── http
+│       ├── custom-context
+│       ├── custom-context-push-url
+│       ├── custom-to-root-context
+│       ├── custom-to-root-context-push-url
+│       ├── load-balancer
+│       ├── multiple-root-context
+│       ├── multiple-root-context-issue-15399
 │       ├── root-context
 │       ├── root-context-push-url
-│       ├── multiple-root-context
+│       ├── root-to-custom-context
+│       ├── root-to-custom-context-push-url
 │       ├── servlet-mapping
 │       └── servlet-mapping-push-url
-│
+│   
 └── my-app (VAADIN Application)
 ```
 
