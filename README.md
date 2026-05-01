@@ -118,6 +118,51 @@ descriptions live in [`scenarios.tsv`](./scenarios.tsv); regenerate the
 READMEs with `scripts/gen-readmes.sh` after editing it or after changing the
 underlying proxy config files.
 
+## Run the smoke tests
+
+The [`integration-tests/`](./integration-tests) module contains a Playwright
+smoke suite that exercises the About view image, the Hello World Flow buttons
+and the Hello Hilla buttons, parameterized over `WEBSOCKET_XHR` and `WEBSOCKET`
+push transports. It's the fastest way to verify that a given proxy scenario
+actually works end to end.
+
+The typical workflow uses two terminals: `run-scenario.sh` to bring up the
+proxy + app stack, and `run-test.sh` to drive the suite against it.
+
+```bash
+# Terminal 1 — bring up a scenario
+./run-scenario.sh apache-httpd/http/custom-context
+
+# Terminal 2 — run the smoke tests against the running scenario
+./run-test.sh http://localhost:9090/app/
+```
+
+`./run-test.sh <base-url>` invokes `mvn verify` in `integration-tests/` with
+`-Dapp.base.url=<base-url>` and does not touch the running app or proxy. The
+trailing slash in the URL matters — view paths are resolved relative to it.
+
+The base URL must match what the scenario exposes; see the `paths` column in
+[`scenarios.tsv`](./scenarios.tsv). Common shapes:
+
+| Scenario | Test base URL |
+|---|---|
+| `root-context*`, `root-to-custom-context*`, `load-balancer` | `http://localhost:9090/` |
+| `custom-context*`, `custom-to-root-context*` | `http://localhost:9090/app/` |
+| `servlet-mapping*` | `http://localhost:9090/ui/` |
+| `custom-to-root-context-servlet-mapping` | `http://localhost:9090/app/ui/` |
+| `multiple-root-context` | both `http://localhost:9090/ui1/` and `/ui2/` |
+
+To smoke-test the raw app (no proxy) on `:8080`, build and start it directly:
+
+```bash
+cd my-app
+./mvnw clean package -DskipTests
+java -jar target/myapp-1.0-SNAPSHOT.jar &
+./run-test.sh http://localhost:8080/
+```
+
+The first run downloads Chromium (~1 min, cached under `~/.cache/ms-playwright`).
+
 ## Use local Vaadin SNAPSHOT
 
 To use local Vaadin SNAPSHOTS you must build the application locally and then
