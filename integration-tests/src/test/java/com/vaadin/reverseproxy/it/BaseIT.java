@@ -1,6 +1,7 @@
 package com.vaadin.reverseproxy.it;
 
 import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.Browser.NewContextOptions;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
@@ -40,7 +41,12 @@ public abstract class BaseIT {
 
     @BeforeEach
     void newContext() {
-        context = browser.newContext();
+        NewContextOptions options = new NewContextOptions();
+        // HTTPS scenarios use a self-signed cert; trust it during tests.
+        if (baseUrl().startsWith("https://")) {
+            options.setIgnoreHTTPSErrors(true);
+        }
+        context = browser.newContext(options);
         page = context.newPage();
     }
 

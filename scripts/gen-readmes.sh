@@ -18,10 +18,21 @@ catalog="$repo_root/scenarios.tsv"
 
 proxy_label() {
     case "$1" in
-        apache-httpd/http) echo "Apache HTTPD (HTTP)" ;;
-        apache-httpd/ajp)  echo "Apache HTTPD (AJP)" ;;
-        nginx/http)        echo "NGINX" ;;
-        *)                 echo "$1" ;;
+        apache-httpd/http)      echo "Apache HTTPD (HTTP)" ;;
+        apache-httpd/ajp)       echo "Apache HTTPD (AJP)" ;;
+        apache-httpd/https)     echo "Apache HTTPD (HTTPS)" ;;
+        apache-httpd/ajp-https) echo "Apache HTTPD (AJP + HTTPS)" ;;
+        nginx/http)             echo "NGINX" ;;
+        nginx/https)            echo "NGINX (HTTPS)" ;;
+        *)                      echo "$1" ;;
+    esac
+}
+
+# Public proxy origin for a given proxy directory.
+proxy_origin() {
+    case "$1" in
+        */https|*/ajp-https) echo "https://localhost:9443" ;;
+        *)                   echo "http://localhost:9090" ;;
     esac
 }
 
@@ -57,6 +68,7 @@ write_readme() {
     local proxy_dir="${key%/*}"        # e.g. apache-httpd/http
     local scenario_name="${key##*/}"   # e.g. root-context
     local title="$(proxy_label "$proxy_dir") — $scenario_name"
+    local origin="$(proxy_origin "$proxy_dir")"
 
     local readme="$scenario_dir/README.md"
     {
@@ -65,7 +77,7 @@ write_readme() {
         echo
         echo "$description"
         echo
-        echo "Proxy URL on \`http://localhost:9090\`: \`$paths\`"
+        echo "Proxy URL on \`$origin\`: \`$paths\`"
         echo
         echo "## Configuration"
         echo

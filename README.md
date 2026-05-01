@@ -32,7 +32,10 @@ The scenarios are replicated for the following reverse proxy configuration:
 
 * Apache HTTPD
 * Apache HTTPD with AJP
+* Apache HTTPD over HTTPS (root-context only)
+* Apache HTTPD with AJP and HTTPS termination (root-context only)
 * NGINX
+* NGINX over HTTPS (root-context only)
 
 ```
 ├── apache-httpd
@@ -49,37 +52,43 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   ├── root-to-custom-context-push-url
 │   │   ├── servlet-mapping
 │   │   └── servlet-mapping-push-url
-│   └── http
-│       ├── custom-context
-│       ├── custom-context-push-url
-│       ├── custom-to-root-context
-│       ├── custom-to-root-context-push-url
-│       ├── custom-to-root-context-servlet-mapping
-│       ├── load-balancer
-│       ├── root-context
-│       ├── root-context-legacy
-│       ├── root-context-push-url
-│       ├── root-to-custom-context
-│       ├── root-to-custom-context-push-url
-│       ├── servlet-mapping
-│       └── servlet-mapping-push-url
+│   ├── http
+│   │   ├── custom-context
+│   │   ├── custom-context-push-url
+│   │   ├── custom-to-root-context
+│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-servlet-mapping
+│   │   ├── load-balancer
+│   │   ├── root-context
+│   │   ├── root-context-legacy
+│   │   ├── root-context-push-url
+│   │   ├── root-to-custom-context
+│   │   ├── root-to-custom-context-push-url
+│   │   ├── servlet-mapping
+│   │   └── servlet-mapping-push-url
+│   ├── https
+│   │   └── root-context
+│   └── ajp-https
+│       └── root-context
 ├── nginx
-│   └── http
-│       ├── custom-context
-│       ├── custom-context-push-url
-│       ├── custom-to-root-context
-│       ├── custom-to-root-context-push-url
-│       ├── custom-to-root-context-servlet-mapping
-│       ├── load-balancer
-│       ├── multiple-root-context
-│       ├── multiple-root-context-issue-15399
-│       ├── root-context
-│       ├── root-context-push-url
-│       ├── root-to-custom-context
-│       ├── root-to-custom-context-push-url
-│       ├── servlet-mapping
-│       └── servlet-mapping-push-url
-│   
+│   ├── http
+│   │   ├── custom-context
+│   │   ├── custom-context-push-url
+│   │   ├── custom-to-root-context
+│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-servlet-mapping
+│   │   ├── load-balancer
+│   │   ├── multiple-root-context
+│   │   ├── multiple-root-context-issue-15399
+│   │   ├── root-context
+│   │   ├── root-context-push-url
+│   │   ├── root-to-custom-context
+│   │   ├── root-to-custom-context-push-url
+│   │   ├── servlet-mapping
+│   │   └── servlet-mapping-push-url
+│   └── https
+│       └── root-context
+│
 └── my-app (VAADIN Application)
 ```
 
@@ -104,7 +113,9 @@ To test a configuration enter the specific directory and run `docker compose up`
 .
 
 Vaadin application will be reachable at `http://localhost:8080`, whereas the
-proxy server can be accessed at `http://localhost:9090`.
+proxy server can be accessed at `http://localhost:9090` (or
+`https://localhost:9443` for the HTTPS scenarios under `apache-httpd/https`,
+`apache-httpd/ajp-https`, and `nginx/https`).
 
 If you change the Vaadin application (`my-app`), remember to rebuild the docker
 image by typing `docker compose build`.
@@ -151,6 +162,7 @@ The base URL must match what the scenario exposes; see the `paths` column in
 | `servlet-mapping*` | `http://localhost:9090/ui/` |
 | `custom-to-root-context-servlet-mapping` | `http://localhost:9090/app/ui/` |
 | `multiple-root-context` | both `http://localhost:9090/ui1/` and `/ui2/` |
+| `https/*`, `ajp-https/*` | `https://localhost:9443/` |
 
 To smoke-test the raw app (no proxy) on `:8080`, build and start it directly:
 

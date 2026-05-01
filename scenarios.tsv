@@ -29,6 +29,9 @@ apache-httpd/ajp/custom-to-root-context-servlet-mapping | AJP proxy at /app/ui/,
 apache-httpd/ajp/servlet-mapping | App at / with Vaadin servlet bound to /ui/*, proxied over AJP. /HILLA push uses an HTTP/WebSocket proxy; /ui/HILLA/* and /ui/connect/* are rewritten back to /HILLA/* and /connect/* on the backend (Hilla resources live at the context root). Root-level static resources flow through the AJP catch-all. | /ui/
 apache-httpd/ajp/servlet-mapping-push-url | AJP servlet-mapping with PUSH relocated to /VAADIN/push. | /ui/
 apache-httpd/ajp/load-balancer | Two AJP backends balanced by mod_proxy_balancer with sticky sessions via Tomcat jvmRoute. | /
+apache-httpd/https/root-context | App at /, Apache terminates TLS on https://localhost:9443/ and forwards over plain HTTP to the backend. SERVER_FORWARD_HEADERS_STRATEGY=NATIVE so Spring Boot honors X-Forwarded-Proto and Vaadin advertises wss:// for PUSH. | /
+apache-httpd/ajp-https/root-context | App at /, Apache terminates TLS on https://localhost:9443/ and forwards over AJP. WebSocket upgrades cannot ride AJP and bypass it via a server-scope RewriteRule to ws://. AJP carries the request scheme natively so Tomcat sees request.isSecure()=true. | /
+nginx/https/root-context | App at /, NGINX terminates TLS on https://localhost:9443/ and forwards over plain HTTP to the backend. SERVER_FORWARD_HEADERS_STRATEGY=NATIVE so Spring Boot honors X-Forwarded-Proto and Vaadin advertises wss:// for PUSH. | /
 nginx/http/root-context | App at /, proxy at /. Baseline NGINX config using the shared default.conf.template with VAADIN_PATH=/. | /
 nginx/http/root-context-push-url | root-context with VAADIN_PUSH_URL=/VAADIN/push; uses the shared push-url.conf.template that adds a dedicated location for the relocated PUSH endpoint. | /
 nginx/http/custom-context | App on /app context, NGINX preserves the path. Uses the shared default.conf.template with VAADIN_PATH=/app. | /app/

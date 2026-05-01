@@ -99,7 +99,10 @@ else
     proxy=$(gum choose --header "Reverse proxy:" \
         "apache-httpd/http" \
         "apache-httpd/ajp" \
-        "nginx/http") || exit 0
+        "apache-httpd/https" \
+        "apache-httpd/ajp-https" \
+        "nginx/http" \
+        "nginx/https") || exit 0
     [[ -z $proxy ]] && exit 0
 
     # --- Step 2: pick scenario (with inline description) ------------------
@@ -156,13 +159,19 @@ if command -v gum >/dev/null; then
 else
     echo "=== $key ==="
 fi
+# HTTPS scenarios publish the proxy on 9443 instead of 9090.
+proxy_dir="${key%/*}"
+case "$proxy_dir" in
+    */https|*/ajp-https) origin="https://localhost:9443" ;;
+    *)                   origin="http://localhost:9090" ;;
+esac
 echo "Open in your browser:"
 IFS=',' read -r -a paths <<< "$paths_csv"
 for p in "${paths[@]}"; do
     p_trimmed="${p#"${p%%[![:space:]]*}"}"
     p_trimmed="${p_trimmed%"${p_trimmed##*[![:space:]]}"}"
     [[ -z $p_trimmed ]] && continue
-    osc8_link "http://localhost:9090${p_trimmed}"
+    osc8_link "${origin}${p_trimmed}"
 done
 echo
 echo "Press Ctrl-C to stop."

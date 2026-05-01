@@ -1,0 +1,24 @@
+services:
+  vaadin:
+    image: vaadin/my-app
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      TOMCAT_AJP_PORT: 8009
+      TOMCAT_AJP_ADDRESS: 0.0.0.0
+      # Honor X-Forwarded-Proto: https forwarded over AJP/HTTP so Vaadin
+      # advertises wss:// for PUSH and absolute URLs use the public scheme.
+      SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
+#      TOMCAT_AJP_SECRET: mysecret
+  https:
+    image: "httpd:latest"
+    ports:
+      - "9443:443"
+#    environment:
+#      TOMCAT_AJP_SECRET: mysecret
+    volumes:
+      - ../../httpd.conf:/usr/local/apache2/conf/httpd.conf
+      - ./vaadin.conf:/usr/local/apache2/conf/extra/httpd-vaadin-http.conf
+      - ../../../tls/localhost.crt:/usr/local/apache2/conf/server.crt:ro
+      - ../../../tls/localhost.key:/usr/local/apache2/conf/server.key:ro

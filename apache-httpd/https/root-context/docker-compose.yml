@@ -1,0 +1,19 @@
+services:
+  vaadin:
+    image: vaadin/my-app
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Honor X-Forwarded-Proto: https from the proxy so Vaadin advertises
+      # wss:// for PUSH and absolute URLs are built with the public scheme.
+      SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
+  https:
+    image: "httpd:latest"
+    ports:
+      - "9443:443"
+    volumes:
+      - ../../httpd.conf:/usr/local/apache2/conf/httpd.conf
+      - ./vaadin.conf:/usr/local/apache2/conf/extra/httpd-vaadin-http.conf
+      - ../../../tls/localhost.crt:/usr/local/apache2/conf/server.crt:ro
+      - ../../../tls/localhost.key:/usr/local/apache2/conf/server.key:ro
