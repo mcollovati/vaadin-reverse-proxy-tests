@@ -15,19 +15,33 @@
 set -euo pipefail
 
 force_down=0
+silent=0
+scenario_arg=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --compose-down) force_down=1 ;;
+        --silent) silent=1 ;;
         -h|--help)
             cat <<EOF
-Usage: $0 [--compose-down]
+Usage: $0 [--compose-down] [--silent] [<proxy>/<scenario>]
 
-  --compose-down   On Ctrl-C, run \`docker compose down -v\` without asking.
+  <proxy>/<scenario>  Run this scenario directly (e.g. apache-httpd/http/root-context).
+                      When omitted, an interactive picker is shown.
+  --silent            Do not stream docker compose logs (run detached).
+  --compose-down      On Ctrl-C, run \`docker compose down -v\` without asking.
 EOF
             exit 0 ;;
-        *)
+        --) shift; break ;;
+        -*)
             echo "unknown argument: $1" >&2
             exit 2 ;;
+        *)
+            if [[ -n $scenario_arg ]]; then
+                echo "unexpected positional argument: $1" >&2
+                exit 2
+            fi
+            scenario_arg="$1"
+            ;;
     esac
     shift
 done
@@ -35,9 +49,13 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 catalog="$repo_root/scenarios.tsv"
 
-command -v gum >/dev/null   || { echo "gum is not installed (https://github.com/charmbracelet/gum)"; exit 1; }
 command -v docker >/dev/null || { echo "docker is not installed"; exit 1; }
 [[ -f $catalog ]] || { echo "scenarios.tsv not found at $catalog" >&2; exit 1; }
+
+# `gum` is only required for the interactive flow.
+if [[ -z $scenario_arg ]]; then
+    command -v gum >/dev/null || { echo "gum is not installed (https://github.com/charmbracelet/gum)"; exit 1; }
+fi
 
 # OSC-8 hyperlink so terminals that support it make the URL clickable.
 osc8_link() {
@@ -64,61 +82,80 @@ catalog_field() {
 description_for() { catalog_field "$1" 2; }
 paths_for()       { catalog_field "$1" 3; }
 
-# --- Step 1: pick proxy ---------------------------------------------------
-proxy=$(gum choose --header "Reverse proxy:" \
-    "apache-httpd/http" \
-    "apache-httpd/ajp" \
-    "nginx/http") || exit 0
-[[ -z $proxy ]] && exit 0
-
-# --- Step 2: pick scenario (with inline description) ----------------------
-mapfile -t scenarios < <(
-    cd "$repo_root/$proxy" && \
-    for d in */; do
-        [[ -f "${d}docker-compose.yml" ]] && echo "${d%/}"
-    done | sort
-)
-[[ ${#scenarios[@]} -gt 0 ]] || { echo "no runnable scenarios under $proxy" >&2; exit 1; }
-
-declare -a scenario_items=()
-for s in "${scenarios[@]}"; do
-    desc="$(description_for "$proxy/$s")"
-    scenario_items+=( "$s — ${desc:-(no description)}" )
-done
-
-selection=$(gum choose --header "Scenario in $proxy:" "${scenario_items[@]}") || exit 0
-[[ -z $selection ]] && exit 0
-scenario="${selection%% — *}"
-key="$proxy/$scenario"
-scenario_dir="$repo_root/$key"
-
-# --- Step 3: action menu (Run / Docs / Cancel) ----------------------------
 show_logs=1
-while :; do
-    action=$(gum choose --header "$key" \
-        "Run (with logs)" \
-        "Run (without logs)" \
-        "Docs" \
-        "Cancel") || { echo "cancelled."; exit 0; }
-    case "$action" in
-        "Run (with logs)")    show_logs=1; break ;;
-        "Run (without logs)") show_logs=0; break ;;
-        "Docs")
-            if [[ -f $scenario_dir/README.md ]]; then
-                gum pager < "$scenario_dir/README.md"
-            else
-                echo "(no README at $scenario_dir/README.md)" && sleep 1
-            fi
-            ;;
-        ""|"Cancel") echo "cancelled."; exit 0 ;;
-    esac
-done
+[[ $silent -eq 1 ]] && show_logs=0
+
+if [[ -n $scenario_arg ]]; then
+    # --- Non-interactive: scenario path given on the command line ---------
+    key="${scenario_arg#./}"
+    key="${key%/}"
+    scenario_dir="$repo_root/$key"
+    if [[ ! -f $scenario_dir/docker-compose.yml ]]; then
+        echo "scenario not found: $key (no docker-compose.yml at $scenario_dir)" >&2
+        exit 1
+    fi
+else
+    # --- Step 1: pick proxy -----------------------------------------------
+    proxy=$(gum choose --header "Reverse proxy:" \
+        "apache-httpd/http" \
+        "apache-httpd/ajp" \
+        "nginx/http") || exit 0
+    [[ -z $proxy ]] && exit 0
+
+    # --- Step 2: pick scenario (with inline description) ------------------
+    mapfile -t scenarios < <(
+        cd "$repo_root/$proxy" && \
+        for d in */; do
+            [[ -f "${d}docker-compose.yml" ]] && echo "${d%/}"
+        done | sort
+    )
+    [[ ${#scenarios[@]} -gt 0 ]] || { echo "no runnable scenarios under $proxy" >&2; exit 1; }
+
+    declare -a scenario_items=()
+    for s in "${scenarios[@]}"; do
+        desc="$(description_for "$proxy/$s")"
+        scenario_items+=( "$s — ${desc:-(no description)}" )
+    done
+
+    selection=$(gum choose --header "Scenario in $proxy:" "${scenario_items[@]}") || exit 0
+    [[ -z $selection ]] && exit 0
+    scenario="${selection%% — *}"
+    key="$proxy/$scenario"
+    scenario_dir="$repo_root/$key"
+
+    # --- Step 3: action menu (Run / Docs / Cancel) ------------------------
+    if [[ $silent -eq 0 ]]; then
+        while :; do
+            action=$(gum choose --header "$key" \
+                "Run (with logs)" \
+                "Run (without logs)" \
+                "Docs" \
+                "Cancel") || { echo "cancelled."; exit 0; }
+            case "$action" in
+                "Run (with logs)")    show_logs=1; break ;;
+                "Run (without logs)") show_logs=0; break ;;
+                "Docs")
+                    if [[ -f $scenario_dir/README.md ]]; then
+                        gum pager < "$scenario_dir/README.md"
+                    else
+                        echo "(no README at $scenario_dir/README.md)" && sleep 1
+                    fi
+                    ;;
+                ""|"Cancel") echo "cancelled."; exit 0 ;;
+            esac
+        done
+    fi
+fi
 
 # --- Step 6: banner with clickable URL(s) --------------------------------
 paths_csv=$(paths_for "$key")
 [[ -z $paths_csv ]] && paths_csv="/"
 
-gum style --border rounded --padding "1 2" --foreground 212 --bold "$key"
+if command -v gum >/dev/null; then
+    gum style --border rounded --padding "1 2" --foreground 212 --bold "$key"
+else
+    echo "=== $key ==="
+fi
 echo "Open in your browser:"
 IFS=',' read -r -a paths <<< "$paths_csv"
 for p in "${paths[@]}"; do
@@ -144,7 +181,8 @@ cleanup() {
     if [[ $force_down -eq 1 ]]; then
         echo "Running docker compose down -v (forced by --compose-down)..."
         docker compose down -v
-    elif gum confirm "Also remove containers (docker compose down -v)?" --default=no; then
+    elif command -v gum >/dev/null \
+            && gum confirm "Also remove containers (docker compose down -v)?" --default=no; then
         docker compose down -v
     fi
 }
@@ -157,8 +195,13 @@ if [[ $show_logs -eq 1 ]]; then
     trap 'true' INT
     docker compose up || true
 else
-    docker compose up -d
+    docker compose up -d >/dev/null
     trap 'exit 0' INT
-    gum spin --title "$key running. Press Ctrl-C to stop." \
-        -- bash -c 'while :; do sleep 60; done' || true
+    if command -v gum >/dev/null; then
+        gum spin --title "$key running. Press Ctrl-C to stop." \
+            -- bash -c 'while :; do sleep 60; done' || true
+    else
+        echo "$key running. Press Ctrl-C to stop."
+        while :; do sleep 60; done
+    fi
 fi
