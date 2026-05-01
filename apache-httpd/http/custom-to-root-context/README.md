@@ -16,7 +16,5 @@ Apache HTTPD config (`vaadin.conf`):
     ProxyPass         "http://vaadin:8080/" upgrade=websocket
     ProxyPassReverse  "http://vaadin:8080/"
     ProxyPassReverseCookiePath "/" "/app"
-
-    RequestHeader set X-Forwarded-Prefix "/app"
 </Location>
 ```

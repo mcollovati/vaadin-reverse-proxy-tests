@@ -14,27 +14,6 @@ Apache HTTPD config (`vaadin.conf`):
 ```apache
 ProxyPass           /ui/HILLA/push     ws://vaadin:8080/HILLA/push
 ProxyPass           /ui/VAADIN/push    ws://vaadin:8080/ui/VAADIN/push
-ProxyPass           /ui/connect/       ajp://vaadin:8009/connect/
-ProxyPass           /ui/               ajp://vaadin:8009/ui/
-
-```
-
-Additional location-scoped rules (`vaadin-location.conf`):
-
-```apache
-<Location /ui/>
-    ProxyPass               ajp://vaadin:8009/ui/
-</Location>
-
-<Location /ui/VAADIN/push>
-    ProxyPass               ws://vaadin:8080/ui/VAADIN/push
-</Location>
-
-<Location /ui/connect/>
-    ProxyPass               ajp://vaadin:8009/connect/
-</Location>
-
-<Location /ui/HILLA/push>
-    ProxyPass               ws://vaadin:8080/HILLA/push
-</Location>
+ProxyPass           /ui/HILLA/         ajp://vaadin:8009/HILLA/
+ProxyPass           /                  ajp://vaadin:8009/
 ```

@@ -13,7 +13,8 @@ apache-httpd/http/root-to-custom-context | App runs at /, proxy exposes it under
 apache-httpd/http/root-to-custom-context-push-url | root-to-custom-context with PUSH relocated to /VAADIN/push. | /app/
 apache-httpd/http/custom-to-root-context | App runs on /app context, proxy strips the prefix and exposes it at root /. | /
 apache-httpd/http/custom-to-root-context-push-url | custom-to-root-context with PUSH relocated to /VAADIN/push. | /
-apache-httpd/http/servlet-mapping | App at / with Vaadin servlet bound to /ui/*. Hilla endpoints stay at /HILLA/ and /connect/ regardless of the Vaadin mapping, so explicit ProxyPassMatch rules are required. | /ui/
+apache-httpd/http/custom-to-root-context-servlet-mapping | custom-to-root-context combined with VAADIN_URL_MAPPING=/ui/*; the proxy adds the /app prefix and rewrites /app/ui/HILLA back to /HILLA on the backend (Hilla push lives at the context root). The catch-all carries everything else, including /app/ui/connect/* (handled by the Vaadin servlet) and root-level static resources. | /app/ui/
+apache-httpd/http/servlet-mapping | App at / with Vaadin servlet bound to /ui/*. /HILLA/* (Hilla push) lives at the context root, so the proxy rewrites /ui/HILLA/* back to /HILLA/*. /connect/* and root-level static resources flow through the catch-all. | /ui/
 apache-httpd/http/servlet-mapping-push-url | servlet-mapping with PUSH relocated to /VAADIN/push. | /ui/
 apache-httpd/http/load-balancer | Two backends balanced by mod_proxy_balancer with sticky sessions via Tomcat jvmRoute appended to JSESSIONID. | /
 apache-httpd/ajp/root-context | App at /, proxied over AJP (mod_proxy_ajp) instead of HTTP. | /
@@ -24,7 +25,8 @@ apache-httpd/ajp/root-to-custom-context | App at /, AJP proxy exposes it under /
 apache-httpd/ajp/root-to-custom-context-push-url | AJP root-to-custom-context with PUSH relocated to /VAADIN/push. | /app/
 apache-httpd/ajp/custom-to-root-context | App on /app, AJP proxy strips the prefix and exposes it at /. | /
 apache-httpd/ajp/custom-to-root-context-push-url | AJP custom-to-root-context with PUSH relocated to /VAADIN/push. | /
-apache-httpd/ajp/servlet-mapping | App at / with Vaadin servlet bound to /ui/*, proxied over AJP. Hilla endpoints proxied separately as in the HTTP variant. | /ui/
+apache-httpd/ajp/custom-to-root-context-servlet-mapping | AJP custom-to-root-context combined with VAADIN_URL_MAPPING=/ui/*; PUSH uses a direct HTTP/WebSocket proxy and /app/ui/HILLA is rewritten back to /HILLA. The AJP catch-all carries the rest, including /app/ui/connect/* and root-level static resources. | /app/ui/
+apache-httpd/ajp/servlet-mapping | App at / with Vaadin servlet bound to /ui/*, proxied over AJP. /HILLA push uses an HTTP/WebSocket proxy; /ui/HILLA/* is rewritten to /HILLA/*. /connect/* and root-level static resources flow through the AJP catch-all. | /ui/
 apache-httpd/ajp/servlet-mapping-push-url | AJP servlet-mapping with PUSH relocated to /VAADIN/push. | /ui/
 apache-httpd/ajp/load-balancer | Two AJP backends balanced by mod_proxy_balancer with sticky sessions via Tomcat jvmRoute. | /
 nginx/http/root-context | App at /, proxy at /. Baseline NGINX config using the shared default.conf.template with VAADIN_PATH=/. | /
@@ -35,7 +37,8 @@ nginx/http/root-to-custom-context | App at /, NGINX exposes it under /app/ via r
 nginx/http/root-to-custom-context-push-url | root-to-custom-context with PUSH relocated to /VAADIN/push. | /app/
 nginx/http/custom-to-root-context | App on /app, NGINX strips the prefix and exposes it at /. Scenario-local template handling the path translation. | /
 nginx/http/custom-to-root-context-push-url | custom-to-root-context with PUSH relocated to /VAADIN/push. | /
-nginx/http/servlet-mapping | App at / with Vaadin servlet bound to /ui/*. Uses the shared default.conf.template with VAADIN_PATH=/ui. | /ui/
+nginx/http/custom-to-root-context-servlet-mapping | custom-to-root-context combined with VAADIN_URL_MAPPING=/ui/*; scenario-local template adds /app prefix translation, a dedicated /app/ui/HILLA/ location that rewrites Hilla push back to /HILLA, and a catch-all for the rest (including /app/ui/connect/* and root-level static resources). | /app/ui/
+nginx/http/servlet-mapping | App at / with Vaadin servlet bound to /ui/*. Scenario-local template rewrites /ui/HILLA/* back to /HILLA/* (Hilla push) and lets the catch-all carry /connect/* and root-level static resources. | /ui/
 nginx/http/servlet-mapping-push-url | servlet-mapping with PUSH relocated to /VAADIN/push. | /ui/
 nginx/http/load-balancer | Two backends balanced by NGINX upstream with sticky sessions via a synthesized ROUTEID cookie. | /
 nginx/http/multiple-root-context | Two independent app instances, each running at /, exposed by NGINX under different prefixes (/ui1 and /ui2). Per-app session cookie names avoid collisions. | /ui1/,/ui2/

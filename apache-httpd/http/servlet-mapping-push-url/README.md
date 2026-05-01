@@ -12,42 +12,14 @@ See [docker-compose.yml](./docker-compose.yml) for service definitions.
 Apache HTTPD config (`vaadin.conf`):
 
 ```apache
-# Hilla resources are always mapped to the root context regardless
-# the vaadin.url-mapping setting
-# See https://github.com/vaadin/hilla/issues/289
+# Hilla push lives at /HILLA on the backend regardless of the
+# vaadin.url-mapping setting. See https://github.com/vaadin/hilla/issues/289
 
-ProxyPass        "/ui/connect/"                http://vaadin:8080/connect/
-ProxyPass        "/ui/VAADIN/push"             ws://vaadin:8080/ui/VAADIN/push
-ProxyPass        "/ui/HILLA/push"              ws://vaadin:8080/HILLA/push
-ProxyPass        "/ui/"                        http://vaadin:8080/ui/
+ProxyPass        "/ui/HILLA/push"     ws://vaadin:8080/HILLA/push
+ProxyPass        "/ui/VAADIN/push"    ws://vaadin:8080/ui/VAADIN/push
+ProxyPassMatch   "^/ui/HILLA/(.*)$"   http://vaadin:8080/HILLA/$1
+ProxyPass        "/"                  http://vaadin:8080/
 
-ProxyPassReverse "/ui/connect/"                http://vaadin:8080/connect/
-ProxyPassReverse "/ui/"                        http://vaadin:8080/ui/
-```
-
-Additional location-scoped rules (`vaadin-location.conf`):
-
-```apache
-# Hilla resources are always mapped to the root context regardless
-# the vaadin.url-mapping setting
-# See https://github.com/vaadin/hilla/issues/289
-
-<Location /ui/>
-    ProxyPass               http://vaadin:8080/ui/
-    ProxyPassReverse        http://vaadin:8080/ui/
-</Location>
-
-<Location /ui/VAADIN/push>
-    ProxyPass               ws://vaadin:8080/ui/VAADIN/push
-</Location>
-
-<Location /ui/connect/>
-    ProxyPass               http://vaadin:8080/connect/
-    ProxyPassReverse        http://vaadin:8080/connect/
-</Location>
-
-
-<Location /ui/HILLA/push>
-    ProxyPass               ws://vaadin:8080/HILLA/push
-</Location>
+ProxyPassReverse "/ui/HILLA/"         http://vaadin:8080/HILLA/
+ProxyPassReverse "/"                  http://vaadin:8080/
 ```

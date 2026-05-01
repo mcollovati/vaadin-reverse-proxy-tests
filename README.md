@@ -41,6 +41,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   ├── custom-context-push-url
 │   │   ├── custom-to-root-context
 │   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-servlet-mapping
 │   │   ├── load-balancer
 │   │   ├── root-context
 │   │   ├── root-context-push-url
@@ -53,6 +54,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 │       ├── custom-context-push-url
 │       ├── custom-to-root-context
 │       ├── custom-to-root-context-push-url
+│       ├── custom-to-root-context-servlet-mapping
 │       ├── load-balancer
 │       ├── root-context
 │       ├── root-context-legacy
@@ -67,6 +69,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 │       ├── custom-context-push-url
 │       ├── custom-to-root-context
 │       ├── custom-to-root-context-push-url
+│       ├── custom-to-root-context-servlet-mapping
 │       ├── load-balancer
 │       ├── multiple-root-context
 │       ├── multiple-root-context-issue-15399
