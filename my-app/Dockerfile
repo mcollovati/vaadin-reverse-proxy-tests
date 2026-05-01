@@ -1,5 +1,5 @@
 # Stage that builds the application, a prerequisite for the running stage
-FROM maven:3-openjdk-17-slim AS build
+FROM maven:3 AS build
 
 # Stop running as root at this point
 RUN useradd -m myuser
@@ -23,7 +23,7 @@ COPY --chown=myuser:myuser package-lock.json* pnpm-lock.yaml* webpack.config.js*
 RUN mvn clean package -DskipTests -Pproduction
 
 # Running stage: the part that is used for running the application
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:21
 COPY --from=build /usr/src/app/target/*.jar /usr/app/app.jar
 RUN useradd -m myuser
 USER myuser

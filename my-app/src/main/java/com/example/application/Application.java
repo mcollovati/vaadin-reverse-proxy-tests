@@ -1,5 +1,7 @@
 package com.example.application;
 
+import com.vaadin.flow.component.dependency.StyleSheet;
+import com.vaadin.flow.theme.lumo.Lumo;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,9 +30,11 @@ import com.vaadin.flow.theme.Theme;
  * and some desktop browsers.
  */
 @SpringBootApplication
-@Theme(value = "myapp")
 @PWA(name = "My App", shortName = "My App", offlineResources = {})
 @Push
+@StyleSheet("context://" + Lumo.STYLESHEET)
+@StyleSheet("context://" + Lumo.UTILITY_STYLESHEET)
+@StyleSheet("context://styles.css")
 public class Application implements AppShellConfigurator {
 
     public static void main(String[] args) {

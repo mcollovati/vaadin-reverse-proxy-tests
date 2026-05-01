@@ -101,7 +101,7 @@ build the docker image.
 Go to `my-app` folder and build the application for production
 
 ```
-mvn clean package -DskipTests -Pproduction 
+mvn clean package -DskipTests
 ```
 
 Then build the docker image and tag it as `vaadin/my-app`

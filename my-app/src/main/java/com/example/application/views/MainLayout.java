@@ -1,5 +1,7 @@
 package com.example.application.views;
 
+import com.vaadin.flow.router.AfterNavigationEvent;
+import com.vaadin.flow.router.AfterNavigationObserver;
 import org.springframework.beans.factory.annotation.Value;
 
 import com.vaadin.flow.component.UI;
@@ -26,7 +28,7 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
  * The main view is a top-level placeholder for other views.
  */
 @Layout
-public class MainLayout extends AppLayout {
+public class MainLayout extends AppLayout implements AfterNavigationObserver {
 
     private final String appName;
     private final H2 viewTitle;
@@ -96,8 +98,7 @@ public class MainLayout extends AppLayout {
     }
 
     @Override
-    protected void afterNavigation() {
-        super.afterNavigation();
+    public void afterNavigation(AfterNavigationEvent event) {
         MenuConfiguration.getPageHeader().ifPresent(viewTitle::setText);
     }
 
