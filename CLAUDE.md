@@ -88,10 +88,12 @@ Java debug port is wired to 5684 via the spring-boot-maven-plugin's `jvmArgument
 Directory names encode what the scenario tests — internalize these before writing or
 modifying configs:
 
+The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** pattern.
+
 - `root-context` — app at `/`, proxy at `/`.
 - `custom-context` — app at `/app`, proxy preserves the same path.
-- `root-to-custom-context` — app at `/`, proxy exposes it under `/app/` (path translation).
-- `custom-to-root-context` — app at `/app`, proxy exposes it at `/` (reverse translation).
+- `root-to-custom-context` — proxy at `/`, app on `/app` context (the public URL stays at root and the proxy adds the `/app` prefix when forwarding to the backend).
+- `custom-to-root-context` — proxy at `/app/`, app at root `/` (the proxy strips the `/app` prefix before forwarding to the backend).
 - `servlet-mapping` — app at `/` but Vaadin servlet on `/ui/*`; Hilla resources stay on root
   (see comment in `apache-httpd/http/servlet-mapping/vaadin.conf` and Hilla issue #289).
 - `*-push-url` — same scenario but with `VAADIN_PUSH_URL` overridden, requiring an extra

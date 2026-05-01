@@ -8,8 +8,9 @@ server {
     listen       80;
     server_name  localhost;
 
-    # Hilla push lives at /HILLA on the backend regardless of vaadin.url-mapping
-    # (see vaadin/hilla#289).
+    # Hilla resources (/HILLA/* push and /connect/* browser-callables) live at
+    # the backend's context root regardless of vaadin.url-mapping, so the
+    # proxy strips the /ui prefix for those (see vaadin/hilla#289).
     location /ui/HILLA/ {
         proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;
@@ -21,10 +22,19 @@ server {
         proxy_pass http://vaadin:8080/HILLA/;
     }
 
+    location /ui/connect/ {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        proxy_pass http://vaadin:8080/connect/;
+    }
+
     # Catch-all so root-level resources (/VAADIN/*, /sw.js, /styles.css,
-    # /manifest.webmanifest, /icons/*, /test-redirect, ...) AND in-mapping
-    # paths handled by the Vaadin servlet (including /ui/connect/* and
-    # /ui/VAADIN/push) reach the backend.
+    # /manifest.webmanifest, /icons/*, /test-redirect, ...) AND /ui/* paths
+    # handled by the Vaadin servlet (including /ui/VAADIN/push) reach the
+    # backend.
     location / {
         proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;

@@ -22,8 +22,9 @@ server {
     listen       80;
     server_name  localhost;
 
-    # Hilla push lives at /HILLA on the backend regardless of vaadin.url-mapping
-    # (see vaadin/hilla#289).
+    # Hilla resources (/HILLA/* push and /connect/* browser-callables) live at
+    # the backend's context root regardless of vaadin.url-mapping, so the
+    # proxy strips the /ui prefix for those (see vaadin/hilla#289).
     location /ui/HILLA/ {
         proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;
@@ -35,8 +36,19 @@ server {
         proxy_pass http://vaadin:8080/HILLA/;
     }
 
-    # Dedicated WebSocket location for the relocated PUSH endpoints.
-    location ~* "(/VAADIN/push|/ui/HILLA/push)" {
+    location /ui/connect/ {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        proxy_pass http://vaadin:8080/connect/;
+    }
+
+    # Dedicated WebSocket location for the relocated Vaadin PUSH endpoint.
+    # Hilla push goes through the /ui/HILLA/ prefix location above (which
+    # already sets the Upgrade headers and strips the /ui prefix).
+    location = /VAADIN/push {
         proxy_set_header        X-Real-IP $remote_addr;
         proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header        X-Forwarded-Proto $scheme;

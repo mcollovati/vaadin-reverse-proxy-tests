@@ -8,11 +8,11 @@ server {
     listen       80;
     server_name  localhost;
 
-    # Hilla push lives at /HILLA on the backend regardless of
-    # vaadin.url-mapping (see vaadin/hilla#289). The browser calls it under
-    # the /ui mapping, so the proxy strips both /app and /ui. NGINX
-    # longest-prefix matching makes this block win over /app/.
-    # /connect/* needs no custom rule — the Vaadin servlet handles it.
+    # Hilla resources (/HILLA/* push and /connect/* browser-callables) live at
+    # the backend's context root regardless of vaadin.url-mapping. The browser
+    # calls them under the /ui mapping, so the proxy strips both /app and /ui
+    # for those paths. NGINX longest-prefix matching makes these blocks win
+    # over /app/. See vaadin/hilla#289.
     location /app/ui/HILLA/ {
         proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;
@@ -24,11 +24,20 @@ server {
         proxy_pass http://vaadin:8080/HILLA/;
     }
 
+    location /app/ui/connect/ {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        proxy_pass http://vaadin:8080/connect/;
+    }
+
     # Catch-all: strip the public /app prefix and forward everything else to
     # the backend root. Covers /app/ui/* (Vaadin servlet, including
-    # /ui/connect/* and /ui/VAADIN/push), root-level static resources
-    # (/VAADIN/*, /sw.js, /styles.css, /manifest.webmanifest, /icons/*,
-    # /images/*) and root-level routes (/test-redirect, /info, ...).
+    # /ui/VAADIN/push), root-level static resources (/VAADIN/*, /sw.js,
+    # /styles.css, /manifest.webmanifest, /icons/*, /images/*) and root-level
+    # routes (/test-redirect, /info, ...).
     location /app/ {
         proxy_set_header        Host $host;
         proxy_set_header        X-Real-IP $remote_addr;
