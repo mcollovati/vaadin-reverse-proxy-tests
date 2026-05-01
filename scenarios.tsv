@@ -1,0 +1,41 @@
+# Scenario catalog. Pipe-separated (|): proxy/scenario | description | paths
+# `paths` is a comma-separated list of URL paths exposed by the proxy on
+# http://localhost:9090. Used by run-scenario.sh to build clickable links and
+# by scripts/gen-readmes.sh to emit per-scenario README.md files.
+#
+# Edit descriptions here; per-scenario READMEs are regenerated from this file.
+apache-httpd/http/root-context | App at /, proxy at /. Baseline scenario using a single <Location /> block with upgrade=websocket. | /
+apache-httpd/http/root-context-legacy | Same as root-context but using the pre-Apache 2.4.47 RewriteRule style to upgrade WebSocket connections, kept for comparison with older configs. | /
+apache-httpd/http/root-context-push-url | root-context with VAADIN_PUSH_URL=/VAADIN/push; needs an extra ws:// proxy block for the relocated PUSH endpoint. | /
+apache-httpd/http/custom-context | App on /app context, proxy preserves the same path so the backend sees the original URL unchanged. | /app/
+apache-httpd/http/custom-context-push-url | custom-context with VAADIN_PUSH_URL=/VAADIN/push; adds a dedicated WebSocket proxy rule for the relocated PUSH endpoint. | /app/
+apache-httpd/http/root-to-custom-context | App runs at /, proxy exposes it under /app/ — verifies path translation when the public URL adds a prefix. | /app/
+apache-httpd/http/root-to-custom-context-push-url | root-to-custom-context with PUSH relocated to /VAADIN/push. | /app/
+apache-httpd/http/custom-to-root-context | App runs on /app context, proxy strips the prefix and exposes it at root /. | /
+apache-httpd/http/custom-to-root-context-push-url | custom-to-root-context with PUSH relocated to /VAADIN/push. | /
+apache-httpd/http/servlet-mapping | App at / with Vaadin servlet bound to /ui/*. Hilla endpoints stay at /HILLA/ and /connect/ regardless of the Vaadin mapping, so explicit ProxyPassMatch rules are required. | /ui/
+apache-httpd/http/servlet-mapping-push-url | servlet-mapping with PUSH relocated to /VAADIN/push. | /ui/
+apache-httpd/http/load-balancer | Two backends balanced by mod_proxy_balancer with sticky sessions via Tomcat jvmRoute appended to JSESSIONID. | /
+apache-httpd/ajp/root-context | App at /, proxied over AJP (mod_proxy_ajp) instead of HTTP. | /
+apache-httpd/ajp/root-context-push-url | AJP root-context with VAADIN_PUSH_URL=/VAADIN/push; PUSH still needs an HTTP/WebSocket proxy since AJP does not carry WebSocket frames. | /
+apache-httpd/ajp/custom-context | App on /app context, proxied over AJP preserving the path. | /app/
+apache-httpd/ajp/custom-context-push-url | AJP custom-context with PUSH relocated to /VAADIN/push. | /app/
+apache-httpd/ajp/root-to-custom-context | App at /, AJP proxy exposes it under /app/ via path translation. | /app/
+apache-httpd/ajp/root-to-custom-context-push-url | AJP root-to-custom-context with PUSH relocated to /VAADIN/push. | /app/
+apache-httpd/ajp/custom-to-root-context | App on /app, AJP proxy strips the prefix and exposes it at /. | /
+apache-httpd/ajp/custom-to-root-context-push-url | AJP custom-to-root-context with PUSH relocated to /VAADIN/push. | /
+apache-httpd/ajp/servlet-mapping | App at / with Vaadin servlet bound to /ui/*, proxied over AJP. Hilla endpoints proxied separately as in the HTTP variant. | /ui/
+apache-httpd/ajp/servlet-mapping-push-url | AJP servlet-mapping with PUSH relocated to /VAADIN/push. | /ui/
+apache-httpd/ajp/load-balancer | Two AJP backends balanced by mod_proxy_balancer with sticky sessions via Tomcat jvmRoute. | /
+nginx/http/root-context | App at /, proxy at /. Baseline NGINX config using the shared default.conf.template with VAADIN_PATH=/. | /
+nginx/http/root-context-push-url | root-context with VAADIN_PUSH_URL=/VAADIN/push; uses the shared push-url.conf.template that adds a dedicated location for the relocated PUSH endpoint. | /
+nginx/http/custom-context | App on /app context, NGINX preserves the path. Uses the shared default.conf.template with VAADIN_PATH=/app. | /app/
+nginx/http/custom-context-push-url | custom-context with PUSH relocated to /VAADIN/push. | /app/
+nginx/http/root-to-custom-context | App at /, NGINX exposes it under /app/ via rewrites — scenario-local template with proxy_cookie_path and proxy_redirect adjustments. | /app/
+nginx/http/root-to-custom-context-push-url | root-to-custom-context with PUSH relocated to /VAADIN/push. | /app/
+nginx/http/custom-to-root-context | App on /app, NGINX strips the prefix and exposes it at /. Scenario-local template handling the path translation. | /
+nginx/http/custom-to-root-context-push-url | custom-to-root-context with PUSH relocated to /VAADIN/push. | /
+nginx/http/servlet-mapping | App at / with Vaadin servlet bound to /ui/*. Uses the shared default.conf.template with VAADIN_PATH=/ui. | /ui/
+nginx/http/servlet-mapping-push-url | servlet-mapping with PUSH relocated to /VAADIN/push. | /ui/
+nginx/http/load-balancer | Two backends balanced by NGINX upstream with sticky sessions via a synthesized ROUTEID cookie. | /
+nginx/http/multiple-root-context | Two independent app instances, each running at /, exposed by NGINX under different prefixes (/ui1 and /ui2). Per-app session cookie names avoid collisions. | /ui1/,/ui2/

@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Interactive launcher for reverse-proxy scenarios.
+#
+# Walks the user through:
+#   1. picking a reverse proxy (apache-httpd/http, apache-httpd/ajp, nginx/http)
+#   2. picking a scenario inside it
+#   3. previewing the scenario README in a pager
+#   4. choosing whether to stream docker compose logs
+#   5. starting the scenario
+#
+# Ctrl-C stops the containers (`docker compose stop`). After that you are
+# asked whether to also `docker compose down -v` — pass --compose-down on the
+# command line to skip the prompt and always tear down.
+
+set -euo pipefail
+
+force_down=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --compose-down) force_down=1 ;;
+        -h|--help)
+            cat <<EOF
+Usage: $0 [--compose-down]
+
+  --compose-down   On Ctrl-C, run \`docker compose down -v\` without asking.
+EOF
+            exit 0 ;;
+        *)
+            echo "unknown argument: $1" >&2
+            exit 2 ;;
+    esac
+    shift
+done
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+catalog="$repo_root/scenarios.tsv"
+
+command -v gum >/dev/null   || { echo "gum is not installed (https://github.com/charmbracelet/gum)"; exit 1; }
+command -v docker >/dev/null || { echo "docker is not installed"; exit 1; }
+[[ -f $catalog ]] || { echo "scenarios.tsv not found at $catalog" >&2; exit 1; }
+
+# OSC-8 hyperlink so terminals that support it make the URL clickable.
+osc8_link() {
+    local url="$1" text="${2:-$1}"
+    printf '\e]8;;%s\e\\%s\e]8;;\e\\\n' "$url" "$text"
+}
+
+# Look up a column from scenarios.tsv ($2 = description, $3 = paths) by key.
+catalog_field() {
+    local key="$1" col="$2"
+    awk -F'|' -v k="$key" -v c="$col" '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*$/ { next }
+        {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1)
+            if ($1 == k) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", $c)
+                print $c
+                exit
+            }
+        }
+    ' "$catalog"
+}
+description_for() { catalog_field "$1" 2; }
+paths_for()       { catalog_field "$1" 3; }
+
+# --- Step 1: pick proxy ---------------------------------------------------
+proxy=$(gum choose --header "Reverse proxy:" \
+    "apache-httpd/http" \
+    "apache-httpd/ajp" \
+    "nginx/http") || exit 0
+[[ -z $proxy ]] && exit 0
+
+# --- Step 2: pick scenario (with inline description) ----------------------
+mapfile -t scenarios < <(
+    cd "$repo_root/$proxy" && \
+    for d in */; do
+        [[ -f "${d}docker-compose.yml" ]] && echo "${d%/}"
+    done | sort
+)
+[[ ${#scenarios[@]} -gt 0 ]] || { echo "no runnable scenarios under $proxy" >&2; exit 1; }
+
+declare -a scenario_items=()
+for s in "${scenarios[@]}"; do
+    desc="$(description_for "$proxy/$s")"
+    scenario_items+=( "$s — ${desc:-(no description)}" )
+done
+
+selection=$(gum choose --header "Scenario in $proxy:" "${scenario_items[@]}") || exit 0
+[[ -z $selection ]] && exit 0
+scenario="${selection%% — *}"
+key="$proxy/$scenario"
+scenario_dir="$repo_root/$key"
+
+# --- Step 3: action menu (Run / Docs / Cancel) ----------------------------
+show_logs=1
+while :; do
+    action=$(gum choose --header "$key" \
+        "Run (with logs)" \
+        "Run (without logs)" \
+        "Docs" \
+        "Cancel") || { echo "cancelled."; exit 0; }
+    case "$action" in
+        "Run (with logs)")    show_logs=1; break ;;
+        "Run (without logs)") show_logs=0; break ;;
+        "Docs")
+            if [[ -f $scenario_dir/README.md ]]; then
+                gum pager < "$scenario_dir/README.md"
+            else
+                echo "(no README at $scenario_dir/README.md)" && sleep 1
+            fi
+            ;;
+        ""|"Cancel") echo "cancelled."; exit 0 ;;
+    esac
+done
+
+# --- Step 6: banner with clickable URL(s) --------------------------------
+paths_csv=$(paths_for "$key")
+[[ -z $paths_csv ]] && paths_csv="/"
+
+gum style --border rounded --padding "1 2" --foreground 212 --bold "$key"
+echo "Open in your browser:"
+IFS=',' read -r -a paths <<< "$paths_csv"
+for p in "${paths[@]}"; do
+    p_trimmed="${p#"${p%%[![:space:]]*}"}"
+    p_trimmed="${p_trimmed%"${p_trimmed##*[![:space:]]}"}"
+    [[ -z $p_trimmed ]] && continue
+    osc8_link "http://localhost:9090${p_trimmed}"
+done
+echo
+echo "Press Ctrl-C to stop."
+echo
+
+# --- Step 7: run the scenario --------------------------------------------
+cd "$scenario_dir"
+
+cleanup_done=0
+cleanup() {
+    [[ $cleanup_done -eq 1 ]] && return 0
+    cleanup_done=1
+    echo
+    echo "Stopping containers..."
+    docker compose stop >/dev/null 2>&1 || true
+    if [[ $force_down -eq 1 ]]; then
+        echo "Running docker compose down -v (forced by --compose-down)..."
+        docker compose down -v
+    elif gum confirm "Also remove containers (docker compose down -v)?" --default=no; then
+        docker compose down -v
+    fi
+}
+trap cleanup EXIT
+
+if [[ $show_logs -eq 1 ]]; then
+    # Foreground compose: Ctrl-C reaches both compose and the script.
+    # Compose handles SIGINT and exits gracefully; the trap below keeps the
+    # script alive long enough for the EXIT handler to ask about teardown.
+    trap 'true' INT
+    docker compose up || true
+else
+    docker compose up -d
+    trap 'exit 0' INT
+    gum spin --title "$key running. Press Ctrl-C to stop." \
+        -- bash -c 'while :; do sleep 60; done' || true
+fi

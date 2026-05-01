@@ -82,6 +82,21 @@ The scenarios are replicated for the following reverse proxy configuration:
 
 ## Run a scenario
 
+### Interactive launcher
+
+The fastest path is the [`gum`](https://github.com/charmbracelet/gum)-based TUI:
+
+```
+./run-scenario.sh
+```
+
+It prompts for a reverse proxy, then a scenario, shows the scenario README in
+a pager, and starts `docker compose up`. Press `Ctrl-C` to stop the
+containers; you will be asked whether to also `docker compose down -v`. Pass
+`--compose-down` to skip the prompt and always tear down.
+
+### Manual
+
 To test a configuration enter the specific directory and run `docker compose up`
 .
 
@@ -92,6 +107,13 @@ If you change the Vaadin application (`my-app`), remember to rebuild the docker
 image by typing `docker compose build`.
 
 To destroy the containers created during the tests type `docker compose down`
+
+### Per-scenario READMEs
+
+Each scenario directory has its own `README.md` (auto-generated). The
+descriptions live in [`scenarios.tsv`](./scenarios.tsv); regenerate the
+READMEs with `scripts/gen-readmes.sh` after editing it or after changing the
+underlying proxy config files.
 
 ## Use local Vaadin SNAPSHOT
 
