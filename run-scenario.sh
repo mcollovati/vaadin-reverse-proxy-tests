@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Interactive launcher for reverse-proxy scenarios.
 #
-# Walks the user through:
-#   1. picking a reverse proxy (apache-httpd/http, apache-httpd/ajp, nginx/http)
-#   2. picking a scenario inside it
-#   3. previewing the scenario README in a pager
-#   4. choosing whether to stream docker compose logs
-#   5. starting the scenario
+# Walks the user through a small wizard:
+#   1. pick a reverse proxy (apache-httpd/{http,ajp,https,ajp-https}, nginx/{http,https})
+#   2. pick a scenario inside it (fuzzy filter; Esc returns to step 1)
+#   3. action menu: Run (with/without logs), Docs (README), Back, Cancel
 #
 # Ctrl-C stops the containers (`docker compose stop`). After that you are
 # asked whether to also `docker compose down -v` — pass --compose-down on the
@@ -81,6 +79,7 @@ catalog_field() {
 }
 description_for() { catalog_field "$1" 2; }
 paths_for()       { catalog_field "$1" 3; }
+short_for()       { catalog_field "$1" 4; }
 
 show_logs=1
 [[ $silent -eq 1 ]] && show_logs=0
@@ -95,59 +94,98 @@ if [[ -n $scenario_arg ]]; then
         exit 1
     fi
 else
-    # --- Step 1: pick proxy -----------------------------------------------
-    proxy=$(gum choose --header "Reverse proxy:" \
-        "apache-httpd/http" \
-        "apache-httpd/ajp" \
-        "apache-httpd/https" \
-        "apache-httpd/ajp-https" \
-        "nginx/http" \
-        "nginx/https") || exit 0
-    [[ -z $proxy ]] && exit 0
+    # --- Wizard: proxy → scenario (with filter) → action ------------------
+    # State machine; each step can return to the previous one via Esc/cancel
+    # (gum exits non-zero on Esc, which we trap with `if !` to keep the
+    # script alive under `set -euo pipefail`).
+    step=1
+    while :; do
+        # Wipe leftover content (previous panels, gum's "nothing selected"
+        # message on Esc, etc.) so each step renders on a clean screen.
+        clear
+        case $step in
+            1)
+                if ! proxy=$(printf '%s\n' \
+                        "apache-httpd/http" \
+                        "apache-httpd/ajp" \
+                        "apache-httpd/https" \
+                        "apache-httpd/ajp-https" \
+                        "nginx/http" \
+                        "nginx/https" \
+                        | gum filter \
+                            --header "Reverse proxy (type to filter, Esc to quit):" \
+                            --placeholder "Filter proxies…"); then
+                    exit 0
+                fi
+                [[ -z $proxy ]] && exit 0
+                step=2
+                ;;
+            2)
+                mapfile -t scenarios < <(
+                    cd "$repo_root/$proxy" && \
+                    for d in */; do
+                        [[ -f "${d}docker-compose.yml" ]] && echo "${d%/}"
+                    done | sort
+                )
+                [[ ${#scenarios[@]} -gt 0 ]] || { echo "no runnable scenarios under $proxy" >&2; exit 1; }
 
-    # --- Step 2: pick scenario (with inline description) ------------------
-    mapfile -t scenarios < <(
-        cd "$repo_root/$proxy" && \
-        for d in */; do
-            [[ -f "${d}docker-compose.yml" ]] && echo "${d%/}"
-        done | sort
-    )
-    [[ ${#scenarios[@]} -gt 0 ]] || { echo "no runnable scenarios under $proxy" >&2; exit 1; }
+                # Pad scenario names to a fixed column so the second column
+                # (short tag) lines up. Two spaces separate the two columns
+                # so we can recover the name with `${selection%% *}` below.
+                max=0
+                for s in "${scenarios[@]}"; do (( ${#s} > max )) && max=${#s}; done
+                declare -a scenario_items=()
+                for s in "${scenarios[@]}"; do
+                    tag="$(short_for "$proxy/$s")"
+                    [[ -z $tag ]] && tag="$(description_for "$proxy/$s")"
+                    printf -v row "%-*s  %s" "$max" "$s" "${tag:-(no description)}"
+                    scenario_items+=( "$row" )
+                done
 
-    declare -a scenario_items=()
-    for s in "${scenarios[@]}"; do
-        desc="$(description_for "$proxy/$s")"
-        scenario_items+=( "$s — ${desc:-(no description)}" )
+                if ! selection=$(printf '%s\n' "${scenario_items[@]}" \
+                        | gum filter \
+                            --header "Scenario in $proxy (type to filter, Esc to go back):" \
+                            --placeholder "Filter scenarios…"); then
+                    step=1; continue
+                fi
+                [[ -z $selection ]] && { step=1; continue; }
+                scenario="${selection%% *}"
+                key="$proxy/$scenario"
+                scenario_dir="$repo_root/$key"
+                step=3
+                ;;
+            3)
+                if [[ $silent -eq 1 ]]; then
+                    show_logs=0
+                    break
+                fi
+                full_desc="$(description_for "$key")"
+                gum style --border rounded --padding "1 2" --foreground 212 \
+                    "$key" "" "${full_desc:-(no description)}"
+                if ! action=$(gum choose --header "Action (Esc to cancel):" \
+                        "Run (with logs)" \
+                        "Run (without logs)" \
+                        "Docs" \
+                        "← Back" \
+                        "Cancel"); then
+                    echo "cancelled."; exit 0
+                fi
+                case "$action" in
+                    "Run (with logs)")    show_logs=1; break ;;
+                    "Run (without logs)") show_logs=0; break ;;
+                    "Docs")
+                        if [[ -f $scenario_dir/README.md ]]; then
+                            gum pager < "$scenario_dir/README.md"
+                        else
+                            echo "(no README at $scenario_dir/README.md)" && sleep 1
+                        fi
+                        ;;
+                    "← Back") step=2 ;;
+                    ""|"Cancel") echo "cancelled."; exit 0 ;;
+                esac
+                ;;
+        esac
     done
-
-    selection=$(gum choose --header "Scenario in $proxy:" "${scenario_items[@]}") || exit 0
-    [[ -z $selection ]] && exit 0
-    scenario="${selection%% — *}"
-    key="$proxy/$scenario"
-    scenario_dir="$repo_root/$key"
-
-    # --- Step 3: action menu (Run / Docs / Cancel) ------------------------
-    if [[ $silent -eq 0 ]]; then
-        while :; do
-            action=$(gum choose --header "$key" \
-                "Run (with logs)" \
-                "Run (without logs)" \
-                "Docs" \
-                "Cancel") || { echo "cancelled."; exit 0; }
-            case "$action" in
-                "Run (with logs)")    show_logs=1; break ;;
-                "Run (without logs)") show_logs=0; break ;;
-                "Docs")
-                    if [[ -f $scenario_dir/README.md ]]; then
-                        gum pager < "$scenario_dir/README.md"
-                    else
-                        echo "(no README at $scenario_dir/README.md)" && sleep 1
-                    fi
-                    ;;
-                ""|"Cancel") echo "cancelled."; exit 0 ;;
-            esac
-        done
-    fi
 fi
 
 # --- Step 6: banner with clickable URL(s) --------------------------------

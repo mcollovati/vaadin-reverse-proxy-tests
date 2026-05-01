@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate per-scenario README.md files from scenarios.tsv.
 #
-# For each row in scenarios.tsv (`proxy/scenario | description | paths`):
+# For each row in scenarios.tsv (`proxy/scenario | description | paths | short`):
 #   - Apache scenarios inline vaadin.conf (and vaadin-location.conf if present).
 #   - NGINX scenarios inline whatever the docker-compose.yml mounts to
 #     /etc/nginx/templates/default.conf.template (shared template or scenario-local).
@@ -125,8 +125,9 @@ while IFS= read -r raw_line; do
     [[ -z ${line// } ]] && continue
     [[ ${line:0:1} == "#" ]] && continue
 
-    # Pipe-separated: key | description | paths
-    IFS='|' read -r key description paths <<< "$line"
+    # Pipe-separated: key | description | paths | short
+    # The short tag is wizard-only (run-scenario.sh); ignore it here.
+    IFS='|' read -r key description paths _short <<< "$line"
     key="${key#"${key%%[![:space:]]*}"}"; key="${key%"${key##*[![:space:]]}"}"
     description="${description#"${description%%[![:space:]]*}"}"; description="${description%"${description##*[![:space:]]}"}"
     paths="${paths#"${paths%%[![:space:]]*}"}"; paths="${paths%"${paths##*[![:space:]]}"}"
