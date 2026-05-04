@@ -50,6 +50,22 @@ docker build -f Dockerfile_localBuild -t vaadin/my-app .
 
 After this, `docker compose up --no-build` reuses the locally tagged image.
 
+### Selecting an image tag per scenario
+
+Every `docker-compose.yml` references the app as
+`image: vaadin/my-app:${MY_APP_VERSION:-latest}`, so multiple Vaadin versions can coexist
+locally as different tags. Build them with `-Dvaadin.version=<X.Y>`:
+
+```
+cd my-app
+mvn clean package -DskipTests -Dvaadin.version=25.1
+docker build -f Dockerfile_localBuild -t vaadin/my-app:25.1 .
+```
+
+Then pick which one to run, either via the launcher (`./run-scenario.sh --app-version 25.1 …`)
+or by setting the env var directly (`MY_APP_VERSION=25.1 docker compose up`). The default
+remains `latest`, so existing invocations are unchanged.
+
 ## How `my-app` adapts to each scenario
 
 Scenarios change the app's behavior through environment variables / Spring properties — the

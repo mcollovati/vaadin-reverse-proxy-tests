@@ -1,6 +1,6 @@
 services:
   vaadin:
-    image: vaadin/my-app
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
     build: ../../../my-app
     ports:
       - "8080:8080"

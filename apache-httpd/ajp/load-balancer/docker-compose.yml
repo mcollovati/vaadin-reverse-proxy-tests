@@ -1,6 +1,6 @@
 services:
   vaadin-1:
-    image: vaadin/my-app
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
     build: ../../../my-app
     ports:
       - "8080:8080"
@@ -9,7 +9,7 @@ services:
       TOMCAT_AJP_PORT: 8009
       TOMCAT_AJP_ADDRESS: 0.0.0.0
   vaadin-2:
-    image: vaadin/my-app
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
     build: ../../../my-app
     ports:
       - "7070:8080"

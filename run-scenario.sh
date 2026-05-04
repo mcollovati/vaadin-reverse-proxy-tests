@@ -15,18 +15,24 @@ set -euo pipefail
 force_down=0
 silent=0
 scenario_arg=""
+my_app_version="latest"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --compose-down) force_down=1 ;;
         --silent) silent=1 ;;
+        --app-version)
+            [[ $# -ge 2 ]] || { echo "--app-version requires a tag" >&2; exit 2; }
+            my_app_version="$2"; shift ;;
+        --app-version=*) my_app_version="${1#--app-version=}" ;;
         -h|--help)
             cat <<EOF
-Usage: $0 [--compose-down] [--silent] [<proxy>/<scenario>]
+Usage: $0 [--compose-down] [--silent] [--app-version <tag>] [<proxy>/<scenario>]
 
   <proxy>/<scenario>  Run this scenario directly (e.g. apache-httpd/http/root-context).
                       When omitted, an interactive picker is shown.
   --silent            Do not stream docker compose logs (run detached).
   --compose-down      On Ctrl-C, run \`docker compose down -v\` without asking.
+  --app-version <tag> Image tag to run (vaadin/my-app:<tag>). Default: latest.
 EOF
             exit 0 ;;
         --) shift; break ;;
@@ -43,6 +49,9 @@ EOF
     esac
     shift
 done
+
+[[ -n $my_app_version ]] || { echo "--app-version cannot be empty" >&2; exit 2; }
+export MY_APP_VERSION="$my_app_version"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 catalog="$repo_root/scenarios.tsv"
@@ -201,9 +210,15 @@ paths_csv=$(paths_for "$key")
 [[ -z $paths_csv ]] && paths_csv="/"
 
 if command -v gum >/dev/null; then
-    gum style --border rounded --padding "1 2" --foreground 212 --bold "$key"
+    if [[ $my_app_version != "latest" ]]; then
+        gum style --border rounded --padding "1 2" --foreground 212 --bold \
+            "$key" "image: vaadin/my-app:$my_app_version"
+    else
+        gum style --border rounded --padding "1 2" --foreground 212 --bold "$key"
+    fi
 else
     echo "=== $key ==="
+    [[ $my_app_version != "latest" ]] && echo "image: vaadin/my-app:$my_app_version"
 fi
 # HTTPS scenarios publish the proxy on 9443 instead of 9090.
 proxy_dir="${key%/*}"

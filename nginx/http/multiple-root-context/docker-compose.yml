@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   vaadin1:
-    image: vaadin/my-app
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
     build: ../../../my-app
     environment:
       - APP_NAME=My App One
@@ -9,7 +9,7 @@ services:
     ports:
       - "8080:8080"
   vaadin2:
-    image: vaadin/my-app
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
     build: ../../../my-app
     environment:
       - APP_NAME=The other app

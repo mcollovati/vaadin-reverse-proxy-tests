@@ -107,6 +107,25 @@ a pager, and starts `docker compose up`. Press `Ctrl-C` to stop the
 containers; you will be asked whether to also `docker compose down -v`. Pass
 `--compose-down` to skip the prompt and always tear down.
 
+By default the scenario runs `vaadin/my-app:latest`. To pick a different image
+tag (for example to compare two Vaadin versions side by side), pass
+`--app-version <tag>`:
+
+```
+./run-scenario.sh --app-version 25.1 apache-httpd/http/root-context
+```
+
+The flag sets the `MY_APP_VERSION` environment variable consumed by every
+`docker-compose.yml` (`image: vaadin/my-app:${MY_APP_VERSION:-latest}`), so it
+also works with plain `docker compose`:
+
+```
+MY_APP_VERSION=25.1 docker compose up
+```
+
+See [Use local Vaadin SNAPSHOT](#use-local-vaadin-snapshot) for how to produce
+the tagged images.
+
 ### Manual
 
 To test a configuration enter the specific directory and run `docker compose up`
@@ -190,6 +209,28 @@ Then build the docker image and tag it as `vaadin/my-app`
 
 ```
 docker build -f Dockerfile_localBuild -t vaadin/my-app .
+```
+
+### Multiple Vaadin versions side by side
+
+To compare scenarios across Vaadin versions, build one image per version and
+tag each with the version. The `vaadin.version` Maven property selects the
+Vaadin BOM:
+
+```
+cd my-app
+mvn clean package -DskipTests -Dvaadin.version=25.1
+docker build -f Dockerfile_localBuild -t vaadin/my-app:25.1 .
+
+mvn clean package -DskipTests -Dvaadin.version=25.2-SNAPSHOT
+docker build -f Dockerfile_localBuild -t vaadin/my-app:25.2 .
+```
+
+Then pick a tag at run time:
+
+```
+./run-scenario.sh --app-version 25.1 apache-httpd/http/root-context
+./run-scenario.sh --app-version 25.2 apache-httpd/http/root-context
 ```
 
 ## Apache HTTPD Notes

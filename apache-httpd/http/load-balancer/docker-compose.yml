@@ -1,13 +1,13 @@
 services:
   vaadin-1:
-    image: vaadin/my-app
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
     build: ../../../my-app
     ports:
       - "8080:8080"
     environment:
       APP_NAME: My App on vaadin-1
   vaadin-2:
-    image: vaadin/my-app
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
     build: ../../../my-app
     ports:
       - "7070:8080"
