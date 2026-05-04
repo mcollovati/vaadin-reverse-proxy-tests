@@ -9,7 +9,7 @@ USER myuser
 
 # Copy pom.xml and prefetch dependencies so a repeated build can continue from the next step with existing dependencies
 COPY --chown=myuser pom.xml ./
-RUN mvn dependency:go-offline -Pproduction
+RUN mvn dependency:go-offline
 
 # Copy all needed project files to a folder
 COPY --chown=myuser:myuser src src
@@ -20,7 +20,7 @@ COPY --chown=myuser:myuser package.json ./
 COPY --chown=myuser:myuser package-lock.json* pnpm-lock.yaml* webpack.config.js* vite.config.js* ./
 
 # Build the production package, assuming that we validated the version before so no need for running tests again
-RUN mvn clean package -DskipTests -Pproduction
+RUN mvn clean package -DskipTests
 
 # Running stage: the part that is used for running the application
 FROM eclipse-temurin:21
