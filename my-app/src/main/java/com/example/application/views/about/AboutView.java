@@ -7,6 +7,8 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.Menu;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.VaadinRequest;
+import com.vaadin.flow.server.VaadinService;
 
 @PageTitle("About")
 @Route(value = "")
@@ -16,7 +18,10 @@ public class AboutView extends VerticalLayout {
     public AboutView() {
         setSpacing(false);
 
-        Image img = new Image("images/empty-plant.png", "placeholder plant");
+        String imagePath = VaadinService.getCurrent()
+                .getContextRootRelativePath(VaadinRequest.getCurrent())
+                + "images/empty-plant.png";
+        Image img = new Image(imagePath, "placeholder plant");
         img.setWidth("200px");
         add(img);
 
