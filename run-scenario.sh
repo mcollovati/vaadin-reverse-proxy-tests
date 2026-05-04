@@ -160,8 +160,16 @@ else
                     break
                 fi
                 full_desc="$(description_for "$key")"
+                # gum style does not wrap long lines — pre-wrap the description so it
+                # stays inside the rounded border on narrow terminals.
+                term_cols=$(tput cols 2>/dev/null || echo 80)
+                box_width=$(( term_cols < 100 ? term_cols : 100 ))
+                inner_width=$(( box_width - 6 ))   # border (2) + padding "1 2" (2*2)
+                (( inner_width < 20 )) && inner_width=20
+                wrapped_desc=$(printf '%s\n' "${full_desc:-(no description)}" \
+                    | fold -s -w "$inner_width")
                 gum style --border rounded --padding "1 2" --foreground 212 \
-                    "$key" "" "${full_desc:-(no description)}"
+                    "$key" "" "$wrapped_desc"
                 if ! action=$(gum choose --header "Action (Esc to cancel):" \
                         "Run (with logs)" \
                         "Run (without logs)" \
