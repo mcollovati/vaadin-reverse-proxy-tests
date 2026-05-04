@@ -50,6 +50,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   ├── root-context-push-url
 │   │   ├── root-to-custom-context
 │   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── servlet-mapping
 │   │   └── servlet-mapping-push-url
 │   ├── http
@@ -64,6 +65,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   ├── root-context-push-url
 │   │   ├── root-to-custom-context
 │   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── servlet-mapping
 │   │   └── servlet-mapping-push-url
 │   ├── https
@@ -84,6 +86,7 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   ├── root-context-push-url
 │   │   ├── root-to-custom-context
 │   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── servlet-mapping
 │   │   └── servlet-mapping-push-url
 │   └── https
@@ -180,6 +183,7 @@ The base URL must match what the scenario exposes; see the `paths` column in
 | `custom-context*`, `custom-to-root-context*` | `http://localhost:9090/app/` |
 | `servlet-mapping*` | `http://localhost:9090/ui/` |
 | `custom-to-root-context-servlet-mapping` | `http://localhost:9090/app/ui/` |
+| `root-to-custom-context-servlet-mapping` | `http://localhost:9090/ui/` |
 | `multiple-root-context` | both `http://localhost:9090/ui1/` and `/ui2/` |
 | `https/*`, `ajp-https/*` | `https://localhost:9443/` |
 

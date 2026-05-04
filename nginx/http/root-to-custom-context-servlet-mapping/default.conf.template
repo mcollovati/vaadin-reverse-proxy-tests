@@ -1,0 +1,55 @@
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+
+    listen       80;
+    server_name  localhost;
+
+    # Hilla resources live at the backend's context root (/app/HILLA/*,
+    # /app/connect/*) regardless of vaadin.url-mapping. The browser calls them
+    # under the Vaadin mapping, so the proxy strips /ui and prepends /app.
+    # NGINX longest-prefix matching makes these blocks win over /. See
+    # vaadin/hilla#289.
+    location /ui/HILLA/ {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+        proxy_set_header        Upgrade $http_upgrade;
+        proxy_set_header        Connection $connection_upgrade;
+
+        proxy_pass http://vaadin:8080/app/HILLA/;
+    }
+
+    location /ui/connect/ {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        proxy_pass http://vaadin:8080/app/connect/;
+    }
+
+    # Catch-all: prepend /app and forward to the backend's context. Covers
+    # /ui/* (Vaadin servlet, including /ui/VAADIN/push), root-level static
+    # resources (/VAADIN/*, /sw.js, /styles.css, /manifest.webmanifest,
+    # /icons/*, /images/*) and root-level routes (/test-redirect, /info, ...).
+    location / {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+        proxy_set_header        Upgrade $http_upgrade;
+        proxy_set_header        Connection $connection_upgrade;
+
+        proxy_pass http://vaadin:8080/app/;
+        proxy_redirect $scheme://$host/app/ $scheme://$http_host/;
+        proxy_cookie_path /app /;
+
+        # Can be tuned if the Vaadin PUSH websocket gets closed unexpectedly
+        # proxy_read_timeout 90
+    }
+}
