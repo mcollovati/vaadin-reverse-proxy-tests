@@ -1,28 +1,23 @@
-vaadin-app-layout[primary-section="navbar"]::part(navbar)::before {
-  background: var(--lumo-base-color) linear-gradient(var(--lumo-contrast-5pct), var(--lumo-contrast-5pct));
-}
-
-vaadin-app-layout[primary-section="drawer"]::part(navbar)::before {
-  background: var(--lumo-base-color);
+vaadin-app-layout[primary-section="navbar"]::part(navbar) {
+  --vaadin-app-layout-navbar-background: var(--vaadin-background-container);
 }
 
 vaadin-app-layout[primary-section="drawer"]::part(navbar) {
-  box-shadow: 0 1px 0 0 var(--lumo-contrast-10pct);
+  --vaadin-app-layout-navbar-background: var(--vaadin-background-color);
+  box-shadow: 0 1px 0 0 var(--vaadin-border-color-secondary);
 }
 
 vaadin-app-layout[primary-section="drawer"]:not([overlay])::part(drawer) {
-  background: var(--lumo-shade-5pct);
+  --vaadin-app-layout-drawer-background: var(--vaadin-background-container);
   border: 0;
-  box-shadow: 1px 0 0 0 var(--lumo-contrast-10pct), 1px 0 0 0 var(--lumo-base-color);
+  box-shadow:
+    1px 0 0 0 var(--vaadin-border-color-secondary),
+    1px 0 0 0 var(--vaadin-background-color);
   z-index: 1;
 }
 
 vaadin-drawer-toggle[slot="navbar"] {
-  color: var(--lumo-secondary-text-color);
-}
-
-::part(navbar) {
-  min-height: var(--lumo-size-xl);
+  color: var(--vaadin-text-color-secondary);
 }
 
 ::part(drawer) {
@@ -32,23 +27,22 @@ vaadin-drawer-toggle[slot="navbar"] {
 
 vaadin-scroller[slot="drawer"] {
   flex: 1;
-  padding: var(--lumo-space-s);
+  padding: var(--vaadin-padding-s);
 }
 
 vaadin-scroller[slot="drawer"][overflow~="top"] {
-  border-top: 1px solid var(--lumo-contrast-10pct);
+  border-top: 1px solid var(--vaadin-border-color-secondary);
 }
 
 vaadin-scroller[slot="drawer"][overflow~="bottom"] {
-  border-bottom: 1px solid var(--lumo-contrast-10pct);
+  border-bottom: 1px solid var(--vaadin-border-color-secondary);
 }
 
 [slot="drawer"]:is(header, footer) {
   display: flex;
   align-items: center;
-  gap: var(--lumo-space-s);
-  padding: var(--lumo-space-s) var(--lumo-space-m);
-  min-height: var(--lumo-size-xl);
+  gap: var(--vaadin-padding-s);
+  padding: var(--vaadin-padding-s) var(--vaadin-padding);
   box-sizing: border-box;
 }
 

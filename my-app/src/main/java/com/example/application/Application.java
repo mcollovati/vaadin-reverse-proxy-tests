@@ -1,7 +1,7 @@
 package com.example.application;
 
 import com.vaadin.flow.component.dependency.StyleSheet;
-import com.vaadin.flow.theme.lumo.Lumo;
+import com.vaadin.flow.theme.aura.Aura;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,7 +21,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import com.vaadin.flow.component.page.AppShellConfigurator;
 import com.vaadin.flow.component.page.Push;
 import com.vaadin.flow.server.PWA;
-import com.vaadin.flow.theme.Theme;
 
 /**
  * The entry point of the Spring Boot application.
@@ -32,8 +31,7 @@ import com.vaadin.flow.theme.Theme;
 @SpringBootApplication
 @PWA(name = "My App", shortName = "My App", offlineResources = {})
 @Push
-@StyleSheet("context://" + Lumo.STYLESHEET)
-@StyleSheet("context://" + Lumo.UTILITY_STYLESHEET)
+@StyleSheet(Aura.STYLESHEET)
 @StyleSheet("context://styles.css")
 public class Application implements AppShellConfigurator {
 

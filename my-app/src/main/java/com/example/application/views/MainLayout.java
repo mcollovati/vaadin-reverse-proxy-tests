@@ -22,7 +22,6 @@ import com.vaadin.flow.server.VaadinRequest;
 import com.vaadin.flow.server.menu.MenuConfiguration;
 import com.vaadin.flow.server.menu.MenuEntry;
 import com.vaadin.flow.shared.ui.Transport;
-import com.vaadin.flow.theme.lumo.LumoUtility;
 
 /**
  * The main view is a top-level placeholder for other views.
@@ -45,16 +44,16 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         DrawerToggle toggle = new DrawerToggle();
         toggle.getElement().setAttribute("aria-label", "Menu toggle");
 
-        viewTitle.addClassNames(LumoUtility.FontSize.LARGE,
-                LumoUtility.Margin.NONE);
+        viewTitle.getStyle().set("font-size", "var(--vaadin-font-size-l)")
+                .set("margin", "0");
 
         addToNavbar(true, toggle, viewTitle);
     }
 
     private void addDrawerContent() {
         H1 appName = new H1(this.appName);
-        appName.addClassNames(LumoUtility.FontSize.LARGE,
-                LumoUtility.Margin.NONE);
+        appName.getStyle().set("font-size", "var(--vaadin-font-size-l)")
+                .set("margin", "0");
 
         Select<Transport> pushTransport = new Select<>();
         pushTransport.setLabel("Push Transport");
