@@ -28,7 +28,7 @@ COPY --chown=myuser:myuser package.json ./
 COPY --chown=myuser:myuser package-lock.json* pnpm-lock.yaml* webpack.config.js* vite.config.js* ./
 
 # Build the production package, assuming that we validated the version before so no need for running tests again
-RUN mvn clean package -DskipTests ${VAADIN_VERSION:+-Dvaadin.version=$VAADIN_VERSION}
+RUN mvn -ntp clean package -DskipTests ${VAADIN_VERSION:+-Dvaadin.version=$VAADIN_VERSION}
 
 # Running stage: the part that is used for running the application
 FROM eclipse-temurin:${JAVA_VERSION}
