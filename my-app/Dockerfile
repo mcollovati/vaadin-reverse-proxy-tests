@@ -1,5 +1,13 @@
+# JDK used for both the Maven build stage and the runtime stage. CI passes
+# --build-arg JAVA_VERSION=<N> to test the app on other Java versions.
+ARG JAVA_VERSION=21
+
 # Stage that builds the application, a prerequisite for the running stage
-FROM maven:3 AS build
+FROM maven:3-eclipse-temurin-${JAVA_VERSION} AS build
+
+# Optional Vaadin version override. Empty (default) builds the pom-pinned
+# version; CI passes --build-arg VAADIN_VERSION=<X.Y> to test other versions.
+ARG VAADIN_VERSION=
 
 # Stop running as root at this point
 RUN useradd -m myuser
@@ -20,10 +28,10 @@ COPY --chown=myuser:myuser package.json ./
 COPY --chown=myuser:myuser package-lock.json* pnpm-lock.yaml* webpack.config.js* vite.config.js* ./
 
 # Build the production package, assuming that we validated the version before so no need for running tests again
-RUN mvn clean package -DskipTests
+RUN mvn clean package -DskipTests ${VAADIN_VERSION:+-Dvaadin.version=$VAADIN_VERSION}
 
 # Running stage: the part that is used for running the application
-FROM eclipse-temurin:21
+FROM eclipse-temurin:${JAVA_VERSION}
 COPY --from=build /usr/src/app/target/*.jar /usr/app/app.jar
 RUN useradd -m myuser
 USER myuser
