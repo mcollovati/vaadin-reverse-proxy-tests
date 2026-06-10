@@ -119,8 +119,8 @@ jobs:
       - name: Install Playwright browser
         working-directory: integration-tests
         run: |
-          ./mvnw -B test-compile
-          ./mvnw -B exec:java \
+          ./mvnw -ntp -B test-compile
+          ./mvnw -ntp -B exec:java \
             -Dexec.classpathScope=test \
             -Dexec.mainClass=com.microsoft.playwright.CLI \
             -Dexec.args="install chromium"
