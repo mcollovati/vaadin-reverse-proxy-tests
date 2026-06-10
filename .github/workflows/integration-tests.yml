@@ -109,6 +109,13 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('integration-tests/pom.xml') }}
           restore-keys: playwright-${{ runner.os }}-
 
+      # System libraries for Chromium need root, which the Maven-driven browser
+      # install below (running as the runner user) cannot get. Install them via
+      # Playwright's npm CLI, which handles sudo. Keep the version in sync with
+      # integration-tests/pom.xml's playwright.version.
+      - name: Install Playwright system dependencies
+        run: npx --yes playwright@1.50.0 install-deps chromium
+
       - name: Install Playwright browser
         working-directory: integration-tests
         run: |
@@ -116,7 +123,7 @@ jobs:
           ./mvnw -B exec:java \
             -Dexec.classpathScope=test \
             -Dexec.mainClass=com.microsoft.playwright.CLI \
-            -Dexec.args="install --with-deps chromium"
+            -Dexec.args="install chromium"
 
       - name: Start scenario stack
         run: docker compose -f "$COMPOSE_FILE" up -d --no-build
