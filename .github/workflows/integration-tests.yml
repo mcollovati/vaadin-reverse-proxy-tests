@@ -144,6 +144,22 @@ jobs:
           done
           [ "$fail" -eq 0 ]
 
+      # Sticky-cookie load balancers (nginx `sticky cookie`, Apache balancer)
+      # round-robin the first, cookie-less request, so a fresh browser session
+      # can land on a backend the single readiness probe above never touched.
+      # Under CI contention that cold backend's first Vaadin render can exceed
+      # Playwright's 5s assertion timeout, failing the suite. Issue a burst of
+      # cookie-less requests per path so round-robin warms every backend's JVM
+      # before the tests run. No-op overhead for single-backend scenarios.
+      - name: Warm all backends
+        run: |
+          set -eu
+          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
+            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
+            echo "Warming $url ..."
+            for _ in $(seq 1 20); do curl -fsk -o /dev/null "$url" || true; done
+          done
+
       - name: Run integration tests
         run: |
           set -eu
