@@ -23,10 +23,10 @@ upstream application_balancer {
     server vaadin-1:8080;
     server vaadin-2:8080;
 
-    # Using ip_hash for persistent sessions since sticky directive is available
-    # only for commercial subscription
-    #sticky cookie ROUTEID path=/ httponly;
-    ip_hash;
+    # Sticky sessions via a cookie. The `sticky` directive is available in
+    # open-source nginx since 1.29.6 (previously commercial-only), so it can
+    # replace the coarser ip_hash balancing.
+    sticky cookie ROUTEID path=/ httponly;
 }
 
 server {
