@@ -91,30 +91,52 @@ fi
 # a registry error rather than an obvious one. Check it once, up front.
 command -v docker >/dev/null || { echo "docker is not installed" >&2; exit 1; }
 
-image="vaadin/my-app:$app_version"
-if ! docker image inspect "$image" >/dev/null 2>&1; then
-    {
-        echo "$image not found locally."
-        echo
-        echo "This script does not build the app image. Build it first:"
-        echo "    docker build my-app -t $image"
-        echo
-        local_tags="$(docker images vaadin/my-app --format '{{.Tag}}' 2>/dev/null | sort -u | paste -sd' ' -)"
-        if [[ -n ${local_tags:-} ]]; then
-            echo "Tags available locally: $local_tags"
-            echo "Pick one with --app-version <tag>."
-        else
-            echo "No vaadin/my-app image exists locally at all."
-        fi
-    } >&2
-    exit 1
-fi
-
 compose_file=""
+tmp_images="$(mktemp)"
 cleanup() {
+    rm -f "$tmp_images"
     [[ -n $compose_file ]] && docker compose -f "$compose_file" down -v >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
+
+> "$tmp_images"
+while read -r scenario; do
+    sed -nE 's/^[[:space:]]*image:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' \
+        "$scenario/docker-compose.yml" >> "$tmp_images"
+done < <(echo "$matrix" | jq -r '.[].scenario')
+
+missing_app=()
+missing_pull=()
+while read -r img; do
+    img="${img//\$\{MY_APP_VERSION:-latest\}/$app_version}"
+    docker image inspect "$img" >/dev/null 2>&1 && continue
+    case "$img" in
+        vaadin/my-app:*) missing_app+=("$img") ;;
+        *)               missing_pull+=("$img") ;;
+    esac
+done < <(sort -u "$tmp_images")
+
+if [[ ${#missing_app[@]} -gt 0 || ${#missing_pull[@]} -gt 0 ]]; then
+    {
+        echo "Images needed by the matched scenarios are not available locally."
+        echo
+        for img in "${missing_app[@]:-}"; do
+            [[ -n $img ]] || continue
+            echo "  $img — this script does not build the app image:"
+            echo "      docker build my-app -t $img"
+            local_tags="$(docker images vaadin/my-app --format '{{.Tag}}' 2>/dev/null | sort -u | paste -sd' ' -)"
+            if [[ -n ${local_tags:-} ]]; then
+                echo "      (tags you already have: $local_tags — select with --app-version)"
+            fi
+        done
+        for img in "${missing_pull[@]:-}"; do
+            [[ -n $img ]] || continue
+            echo "  $img — pull it once:"
+            echo "      docker pull $img"
+        done
+    } >&2
+    exit 1
+fi
 
 passed=(); failed=()
 
