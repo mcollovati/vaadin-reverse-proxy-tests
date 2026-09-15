@@ -58,8 +58,9 @@ public class PushTransportConfigurer implements VaadinServiceInitListener {
                     + name + "', which this Flow build does not offer. Known transports: "
                     + Arrays.stream(Transport.values()).map(Enum::name)
                             .collect(Collectors.joining(", "))
-                    + ". SERVER_SENT_EVENTS needs a Flow with the SSE push transport,"
-                    + " e.g. --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT.", e);
+                    + ". SERVER_SENT_EVENTS needs a Flow with the SSE push"
+                    + " transport, e.g. --build-arg VAADIN_VERSION=25.4-SNAPSHOT.",
+                    e);
         }
     }
 

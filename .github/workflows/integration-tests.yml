@@ -19,9 +19,14 @@ on:
         required: false
         default: "21"
       flow_version:
-        description: "Flow version override, e.g. 25.4.sse2-SNAPSHOT. Required by the *-sse scenarios, which are skipped when this is empty."
+        description: "Flow version override, e.g. a branch snapshot. Empty = whatever the platform version pulls in."
         required: false
         default: ""
+      include_sse:
+        description: "Run the *-sse scenarios. Needs a build whose Flow has the SSE push transport (Vaadin 25.3+/25.4+, or a flow_version that has it)."
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   prepare:
@@ -47,10 +52,10 @@ jobs:
       - name: Generate scenario matrix
         id: gen
         run: |
-          # The *-sse scenarios need an app image whose Flow supports the SSE
-          # push transport, so skip them unless this run is building one.
+          # The *-sse scenarios need an app image whose Flow has the SSE push
+          # transport. The pom's pinned version predates it, so they are opt-in.
           exclude=''
-          [ -z "${{ inputs.flow_version }}" ] && exclude='\-sse$'
+          [ "${{ inputs.include_sse }}" = "true" ] || exclude='\-sse$'
           matrix="$(scripts/gen-matrix.sh "${{ inputs.scenario_filter }}" "$exclude")"
           echo "$matrix" | jq -e 'length > 0' >/dev/null \
             || { echo "::error::No scenarios matched filter '${{ inputs.scenario_filter }}'"; exit 1; }

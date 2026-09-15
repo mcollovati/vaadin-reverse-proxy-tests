@@ -12,9 +12,7 @@
 #   docker build my-app -t vaadin/my-app:latest
 #   scripts/run-all.sh
 #
-#   docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT \
-#                       --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT \
-#                       -t vaadin/my-app:sse
+#   docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT -t vaadin/my-app:sse
 #   scripts/run-all.sh --app-version sse '\-sse$'
 #
 # Like the CI job, each scenario's push transport is derived from its name: the

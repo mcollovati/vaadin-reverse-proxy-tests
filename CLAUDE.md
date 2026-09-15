@@ -132,9 +132,11 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 - `*-sse` — same scenario but with PUSH over Server-Sent Events
   (`VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS`), and a proxy config that deliberately has
   **no** WebSocket support: no `upgrade=websocket`, no `ws://` worker, no `RewriteRule`
-  on the `Upgrade` header. Requires an app image built with `FLOW_VERSION` pointing at a
-  Flow that has the transport. Selecting a WebSocket transport in one of these
-  fails with a 501 from Atmosphere — that is the point of the scenario, not a bug.
+  on the `Upgrade` header. Needs an app image whose Flow has the SSE transport —
+  Vaadin 25.3-SNAPSHOT / 25.4-SNAPSHOT or later, since the pom's pinned version predates
+  it. CI gates them behind the `include_sse` workflow input. Selecting a WebSocket
+  transport in one of these fails with a 501 from Atmosphere — that is the point of the
+  scenario, not a bug.
   Hilla `Flux` endpoints cannot work in these either: Hilla push is WebSocket-only
   (`FluxConnection` sets transport and fallbackTransport both to `websocket`), so
   the ITs skip those assertions via `-Dit.websocket=false`.

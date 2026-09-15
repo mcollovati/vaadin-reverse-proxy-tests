@@ -221,9 +221,7 @@ It does not build the app image; build it first and pass the tag.
 docker build my-app -t vaadin/my-app:latest
 scripts/run-all.sh --exclude '\-sse$'      # the 44 WebSocket scenarios
 
-docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT \
-                    --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT \
-                    -t vaadin/my-app:sse
+docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT -t vaadin/my-app:sse
 scripts/run-all.sh --app-version sse '\-sse$'   # the 19 SSE scenarios
 ```
 
@@ -282,30 +280,36 @@ Then pick a tag at run time:
 ./run-scenario.sh --app-version 25.2 apache-httpd/http/root-context
 ```
 
+### Building an SSE-capable image
+
+The Server-Sent Events push transport landed in
+[vaadin/flow#24484](https://github.com/vaadin/flow/pull/24484), merged to Flow
+`main`, so it ships in the `25.3-SNAPSHOT` and `25.4-SNAPSHOT` lines. The `*-sse`
+scenarios need an image built from one of those — the pom's pinned version
+predates the transport.
+
+```
+docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT -t vaadin/my-app:sse
+./run-scenario.sh --app-version sse nginx/http/root-context-sse
+```
+
 ### Overriding the Flow version
 
 `flow.version` imports `flow-bom` on top of the platform BOM, so the app can be
-built against a Flow branch snapshot without moving the whole platform. This is
-what the `*-sse` scenarios need: the Server-Sent Events push transport landed in
-[vaadin/flow#24484](https://github.com/vaadin/flow/pull/24484) and is not in a
-released platform yet.
-
-```
-cd my-app
-mvn clean package -DskipTests -Dvaadin.version=25.4-SNAPSHOT \
-                              -Dflow.version=25.4.sse2-SNAPSHOT
-docker build -f Dockerfile_localBuild -t vaadin/my-app:sse .
-```
-
-Or let the image build it, which is what CI does (`flow_version` workflow
-input):
+built against a Flow branch snapshot without moving the whole platform. Use it
+to test a Flow PR, or when a platform snapshot has not yet picked up a Flow
+change you need:
 
 ```
 docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT \
-                    --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT \
-                    -t vaadin/my-app:sse
-./run-scenario.sh --app-version sse nginx/http/root-context-sse
+                    --build-arg FLOW_VERSION=25.4.some-branch-SNAPSHOT \
+                    -t vaadin/my-app:branch
 ```
+
+The same pair works for a local build (`mvn clean package -DskipTests
+-Dvaadin.version=… -Dflow.version=…`, then `docker build -f
+Dockerfile_localBuild`). CI exposes both as the `vaadin_version` and
+`flow_version` workflow inputs.
 
 ## Server-Sent Events push
 
