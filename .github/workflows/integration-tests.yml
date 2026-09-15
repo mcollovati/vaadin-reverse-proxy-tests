@@ -159,13 +159,23 @@ jobs:
         run: |
           set -eu
           fail=0
+          # Require consecutive successes. A single 200 is not enough for a load
+          # balancer: it only proves one backend is up, and a backend that was
+          # refused earlier stays blacklisted by the proxy for its fail_timeout,
+          # so requests keep returning 502 after the app has started listening.
           for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
             url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
             echo "Waiting for $url ..."
             ok=0
-            for _ in $(seq 1 60); do
-              if curl -fsk -o /dev/null "$url"; then ok=1; break; fi
-              sleep 2
+            streak=0
+            for _ in $(seq 1 90); do
+              if curl -fsk -o /dev/null "$url"; then
+                streak=$((streak + 1))
+                if [ "$streak" -ge 3 ]; then ok=1; break; fi
+              else
+                streak=0
+              fi
+              sleep 1
             done
             if [ "$ok" -ne 1 ]; then echo "::error::Timed out waiting for $url"; fail=1; fi
           done

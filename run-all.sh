@@ -156,15 +156,39 @@ while IFS=$'\t' read -r scenario scheme port paths; do
     compose_file="$scenario/docker-compose.yml"
     docker compose -f "$compose_file" up -d --no-build
 
+    # Wait for the backends themselves before going through the proxy. With a
+    # load balancer a single success through the proxy only proves that one
+    # backend is up, and an early connection refusal makes nginx mark that
+    # upstream down for fail_timeout -- after which requests keep returning 502
+    # even though the app has since started listening. Any HTTP response counts:
+    # a context-path app answers / with 404, which still proves it is serving.
+    while read -r backend_port; do
+        printf 'Waiting for backend on :%s ' "$backend_port"
+        for _ in $(seq 1 60); do
+            if curl -s -o /dev/null --max-time 2 "http://localhost:$backend_port/"; then break; fi
+            printf '.'; sleep 2
+        done
+        echo
+    done < <(sed -nE 's/^[[:space:]]*-[[:space:]]*"?([0-9]+):8080"?.*/\1/p' "$compose_file")
+
     scenario_ok=1
     for path in $paths; do
         url="$scheme://localhost:$port$path"
 
+        # Require a few consecutive successes, so a proxy that is still serving
+        # 502s from a blacklisted upstream does not look ready.
         printf 'Waiting for %s ' "$url"
         ready=0
-        for _ in $(seq 1 60); do
-            if curl -fsk -o /dev/null "$url"; then ready=1; break; fi
-            printf '.'; sleep 2
+        streak=0
+        for _ in $(seq 1 90); do
+            if curl -fsk -o /dev/null "$url"; then
+                streak=$((streak + 1))
+                if [[ $streak -ge 3 ]]; then ready=1; break; fi
+            else
+                streak=0
+                printf '.'
+            fi
+            sleep 1
         done
         echo
         if [[ $ready -ne 1 ]]; then

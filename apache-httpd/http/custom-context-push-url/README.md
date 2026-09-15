@@ -14,14 +14,11 @@ Apache HTTPD config (`vaadin.conf`):
 ```apache
 # The relocated PUSH endpoint is proxied over http:// with upgrade=websocket
 # rather than ws://. Since httpd 2.4.47 that upgrades only when the client asks
-# for one, so a single rule carries WebSocket, SSE and long polling. A ws://
-# worker serves WebSocket only, and SSE both streams from and POSTs its
-# client-to-server messages to this same path.
-
-<Location /app/>
-    ProxyPass               http://vaadin:8080/app/
-    ProxyPassReverse        http://vaadin:8080/app/
-</Location>
+# for one, so a single rule carries WebSocket, SSE and long polling.
+#
+# ORDER MATTERS: mod_proxy shares a worker when one worker URL is a leading
+# substring of another defined later, silently dropping the later one's
+# parameters -- upgrade=websocket included. Longest backend URL first.
 
 <Location /app/VAADIN/push>
     ProxyPass               http://vaadin:8080/app/VAADIN/push upgrade=websocket
@@ -29,5 +26,10 @@ Apache HTTPD config (`vaadin.conf`):
 
 <Location /app/HILLA/push>
     ProxyPass               http://vaadin:8080/app/HILLA/push upgrade=websocket
+</Location>
+
+<Location /app/>
+    ProxyPass               http://vaadin:8080/app/
+    ProxyPassReverse        http://vaadin:8080/app/
 </Location>
 ```
