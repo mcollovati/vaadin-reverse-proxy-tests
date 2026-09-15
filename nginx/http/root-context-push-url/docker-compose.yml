@@ -8,6 +8,8 @@ services:
     environment:
       - VAADIN_PUSH_URL=/VAADIN/push
   web:
+    depends_on:
+      - vaadin
     image: nginx
     volumes:
       - ../../templates/push-url.conf.template:/etc/nginx/templates/default.conf.template

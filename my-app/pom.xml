@@ -152,6 +152,33 @@
     </build>
 
     <profiles>
+        <!--
+            Overrides the Flow version that the platform would otherwise pull in
+            transitively, so the app can be built against a Flow branch snapshot
+            (e.g. -Dflow.version=25.4.sse2-SNAPSHOT for the SSE push transport).
+            vaadin-bom does not manage any flow-* artifact, so this import wins
+            regardless of where it sits relative to the vaadin-bom import.
+        -->
+        <profile>
+            <id>flow-override</id>
+            <activation>
+                <property>
+                    <name>flow.version</name>
+                </property>
+            </activation>
+            <dependencyManagement>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.vaadin</groupId>
+                        <artifactId>flow-bom</artifactId>
+                        <version>${flow.version}</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                    </dependency>
+                </dependencies>
+            </dependencyManagement>
+        </profile>
+
         <profile>
             <id>it</id>
             <build>

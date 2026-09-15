@@ -18,6 +18,10 @@ on:
         description: "JDK for the test runner and the my-app build/runtime image."
         required: false
         default: "21"
+      flow_version:
+        description: "Flow version override, e.g. 25.4.sse2-SNAPSHOT. Required by the *-sse scenarios, which are skipped when this is empty."
+        required: false
+        default: ""
 
 jobs:
   prepare:
@@ -33,12 +37,21 @@ jobs:
         run: |
           tag="${{ inputs.vaadin_version }}"
           [ -z "$tag" ] && tag="latest"
+          if [ -n "${{ inputs.flow_version }}" ]; then
+            # A Flow override yields a different artifact from the same platform
+            # version, so give it its own tag instead of overwriting the default.
+            tag="$tag-flow-${{ inputs.flow_version }}"
+          fi
           echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Generate scenario matrix
         id: gen
         run: |
-          matrix="$(scripts/gen-matrix.sh "${{ inputs.scenario_filter }}")"
+          # The *-sse scenarios need an app image whose Flow supports the SSE
+          # push transport, so skip them unless this run is building one.
+          exclude=''
+          [ -z "${{ inputs.flow_version }}" ] && exclude='\-sse$'
+          matrix="$(scripts/gen-matrix.sh "${{ inputs.scenario_filter }}" "$exclude")"
           echo "$matrix" | jq -e 'length > 0' >/dev/null \
             || { echo "::error::No scenarios matched filter '${{ inputs.scenario_filter }}'"; exit 1; }
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -54,6 +67,7 @@ jobs:
         run: |
           docker build my-app \
             --build-arg VAADIN_VERSION="${{ inputs.vaadin_version }}" \
+            --build-arg FLOW_VERSION="${{ inputs.flow_version }}" \
             --build-arg JAVA_VERSION="${{ inputs.java_version }}" \
             -t "vaadin/my-app:${{ needs.prepare.outputs.image_tag }}"
 
@@ -80,6 +94,14 @@ jobs:
       COMPOSE_FILE: ${{ matrix.scenario }}/docker-compose.yml
       MY_APP_VERSION: ${{ needs.prepare.outputs.image_tag }}
       SCENARIO_PATHS: ${{ toJson(matrix.paths) }}
+      # A scenario connects over the transport its own compose file configures:
+      # the *-sse ones set VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS, the rest
+      # bootstrap over WebSocket.
+      PUSH_TRANSPORTS: ${{ endsWith(matrix.scenario, '-sse') && 'SERVER_SENT_EVENTS' || 'WEBSOCKET_XHR,WEBSOCKET' }}
+      # The *-sse proxies cannot upgrade a connection, so Hilla's reactive
+      # endpoints cannot work there: FluxConnection subscribes with transport
+      # and fallbackTransport both 'websocket'. Those assertions are skipped.
+      IT_WEBSOCKET: ${{ endsWith(matrix.scenario, '-sse') && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -166,7 +188,7 @@ jobs:
           for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
             url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
             echo "::group::Tests against $url"
-            ./run-test.sh "$url"
+            ./run-test.sh "$url" -- -Dit.push.transports="$PUSH_TRANSPORTS" -Dit.websocket="$IT_WEBSOCKET"
             echo "::endgroup::"
           done
 

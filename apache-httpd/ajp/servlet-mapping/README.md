@@ -21,7 +21,7 @@ RewriteCond %{HTTP:Connection} upgrade [NC]
 RewriteRule ^/(ui/(HILLA)|(ui))/(.*) "ws://vaadin:8080/$2$3/$4" [P,L]
 
 # Hilla browser-callables (/connect/*) live at backend root, not under /ui.
-ProxyPass           /ui/HILLA/      ajp://vaadin:8009/HILLA/
-ProxyPass           /ui/connect/    ajp://vaadin:8009/connect/
-ProxyPass           /               ajp://vaadin:8009/
+ProxyPass           /ui/HILLA/      ajp://vaadin:8009/HILLA/ flushpackets=on
+ProxyPass           /ui/connect/    ajp://vaadin:8009/connect/ flushpackets=on
+ProxyPass           /               ajp://vaadin:8009/ flushpackets=on
 ```

@@ -17,6 +17,9 @@ services:
     ports:
       - "7080:8080"
   web:
+    depends_on:
+      - vaadin1
+      - vaadin2
     image: nginx
     volumes:
       - ./default.conf.template:/etc/nginx/templates/default.conf.template

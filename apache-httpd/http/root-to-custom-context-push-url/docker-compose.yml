@@ -9,6 +9,8 @@ services:
       SERVER_SERVLET_CONTEXT_PATH: /app
       VAADIN_PUSH_URL: /VAADIN/push
   http:
+    depends_on:
+      - vaadin
     image: "httpd:latest"
     ports:
       - "9090:80"

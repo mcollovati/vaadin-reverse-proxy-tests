@@ -9,6 +9,8 @@ services:
       - VAADIN_PUSH_URL=/VAADIN/push
       - SERVER_SERVLET_CONTEXT_PATH=/app
   web:
+    depends_on:
+      - vaadin
     image: nginx
     volumes:
       - ../../templates/push-url.conf.template:/etc/nginx/templates/default.conf.template

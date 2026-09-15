@@ -12,6 +12,8 @@ services:
       SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
 #      TOMCAT_AJP_SECRET: mysecret
   https:
+    depends_on:
+      - vaadin
     image: "httpd:latest"
     ports:
       - "9443:443"

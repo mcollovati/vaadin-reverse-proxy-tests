@@ -9,6 +9,8 @@ services:
       # wss:// for PUSH and absolute URLs are built with the public scheme.
       SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
   https:
+    depends_on:
+      - vaadin
     image: "httpd:latest"
     ports:
       - "9443:443"

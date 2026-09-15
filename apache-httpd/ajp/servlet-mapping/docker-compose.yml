@@ -10,6 +10,8 @@ services:
       TOMCAT_AJP_PORT: 8009
       TOMCAT_AJP_ADDRESS: 0.0.0.0
   http:
+    depends_on:
+      - vaadin
     image: "httpd:latest"
     ports:
       - "9090:80"

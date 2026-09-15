@@ -6,6 +6,8 @@ services:
     ports:
       - "8080:8080"
   web:
+    depends_on:
+      - vaadin
     image: nginx
     volumes:
       - ../../templates/default.conf.template:/etc/nginx/templates/default.conf.template

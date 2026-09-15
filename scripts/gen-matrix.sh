@@ -12,10 +12,16 @@
 #
 # Optional arg $1 is a filter (extended regex) matched against the scenario
 # key; only matching rows are emitted. No filter (or empty) = all scenarios.
+# Optional arg $2 excludes keys matching a second regex, applied after $1.
 #
-#   scripts/gen-matrix.sh                 # every scenario
-#   scripts/gen-matrix.sh nginx           # only nginx/* scenarios
-#   scripts/gen-matrix.sh 'http/root'     # regex match on the key
+#   scripts/gen-matrix.sh                    # every scenario
+#   scripts/gen-matrix.sh nginx              # only nginx/* scenarios
+#   scripts/gen-matrix.sh 'http/root'        # regex match on the key
+#   scripts/gen-matrix.sh '' -- '-sse$'      # every scenario except the SSE ones
+#
+# The exclusion exists because the *-sse scenarios need an app image built
+# against a Flow version that has the SSE push transport; a run that did not
+# build one has to skip them.
 #
 # Requires jq for safe JSON encoding.
 
@@ -24,6 +30,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 catalog="$repo_root/scenarios.tsv"
 filter="${1:-}"
+exclude="${2:-}"
 
 [[ -f $catalog ]] || { echo "scenarios.tsv not found at $catalog" >&2; exit 1; }
 command -v jq >/dev/null || { echo "jq is not installed" >&2; exit 1; }
@@ -48,6 +55,9 @@ while IFS= read -r raw_line; do
 
     if [[ -n $filter ]]; then
         printf '%s' "$key" | grep -Eq "$filter" || continue
+    fi
+    if [[ -n $exclude ]] && printf '%s' "$key" | grep -Eq "$exclude"; then
+        continue
     fi
 
     local_proxy_dir="${key%/*}"

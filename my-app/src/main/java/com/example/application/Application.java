@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
@@ -19,7 +20,6 @@ import org.springframework.core.Ordered;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.vaadin.flow.component.page.AppShellConfigurator;
-import com.vaadin.flow.component.page.Push;
 import com.vaadin.flow.server.PWA;
 
 /**
@@ -30,7 +30,6 @@ import com.vaadin.flow.server.PWA;
  */
 @SpringBootApplication
 @PWA(name = "My App", shortName = "My App", offlineResources = {})
-@Push
 @StyleSheet(Aura.STYLESHEET)
 @StyleSheet("context://styles.css")
 public class Application implements AppShellConfigurator {
@@ -53,6 +52,53 @@ public class Application implements AppShellConfigurator {
                     }
                 });
         registrationBean.addUrlPatterns("/test-redirect");
+        registrationBean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registrationBean;
+    }
+
+    /**
+     * A bare Server-Sent Events stream, independent of Vaadin, that emits one
+     * event every 500 ms for 30 seconds.
+     * <p>
+     * {@code curl -N <proxy-url>sse-probe} tells you in one command whether a
+     * proxy passes an event stream through unbuffered: the ticks must trickle
+     * in one by one. Arriving in a burst at the end means the proxy is
+     * buffering the response, which is what breaks SSE push.
+     * <p>
+     * Registered as a filter rather than an MVC controller so it stays
+     * reachable whatever the Vaadin servlet is mapped to.
+     */
+    @Bean
+    FilterRegistrationBean<?> sseProbe() {
+        FilterRegistrationBean<OncePerRequestFilter> registrationBean = new FilterRegistrationBean<>(
+                new OncePerRequestFilter() {
+
+                    @Override
+                    protected void doFilterInternal(HttpServletRequest request,
+                            HttpServletResponse response,
+                            FilterChain filterChain) throws IOException {
+                        response.setContentType("text/event-stream");
+                        response.setCharacterEncoding("UTF-8");
+                        response.setHeader("Cache-Control", "no-cache");
+                        // Asks nginx not to buffer even when proxy_buffering is
+                        // left on, so the probe can tell a missing
+                        // `proxy_buffering off` from a broken one.
+                        response.setHeader("X-Accel-Buffering", "no");
+
+                        PrintWriter writer = response.getWriter();
+                        for (int tick = 0; tick < 60; tick++) {
+                            writer.write("data: tick " + tick + "\n\n");
+                            writer.flush();
+                            try {
+                                Thread.sleep(500);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
+                    }
+                });
+        registrationBean.addUrlPatterns("/sse-probe");
         registrationBean.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return registrationBean;
     }

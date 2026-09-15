@@ -5,6 +5,8 @@ services:
     ports:
       - "8080:8080"
   http:
+    depends_on:
+      - vaadin
     image: "httpd:latest"
     ports:
       - "9090:80"

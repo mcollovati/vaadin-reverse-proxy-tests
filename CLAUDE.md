@@ -22,7 +22,10 @@ multi-app routing. README.md is the canonical map of scenarios.
 - `nginx/http/<scenario>/` — `docker-compose.yml` + either an env var pointing at a shared
   template in `nginx/templates/`, or a scenario-local `default.conf.template`. NGINX templates
   are interpolated by the official image from `${VAADIN_PATH}`-style env vars.
-- `integration-tests/` — IntelliJ module placeholder only; no actual tests yet.
+- `integration-tests/` — standalone Maven module with a Playwright smoke suite
+  (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`). Driven by `run-test.sh`
+  against an already-running scenario; parameterized over the push transports named
+  by `-Dit.push.transports`.
 
 ## Running scenarios
 
@@ -76,6 +79,10 @@ Java code is the same image everywhere. Key knobs:
   set, `Application.publicImagesAliasFilter` forwards `/<mapping>/icons/...` and
   `/<mapping>/images/...` back to the unmapped path so static assets resolve.
 - `VAADIN_PUSH_URL=/VAADIN/push` — overrides the default push endpoint (used by `*-push-url`).
+- `VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS` — `PushTransportConfigurer` sets both the
+  transport and the *fallback* transport on every UI (used by `*-sse`). Setting the
+  fallback is the point: otherwise Atmosphere silently degrades to long polling when a
+  proxy blocks the transport, and a broken config looks like a working one.
 - `TOMCAT_AJP_PORT` / `TOMCAT_AJP_ADDRESS` / `TOMCAT_AJP_SECRET` — `TomcatConfig.AJP` adds an
   AJP connector iff `tomcat.ajp.port` is set. `secretRequired=false` is forced when the secret
   is blank, otherwise the proxy must send a matching `secret=` on `ProxyPass`.
@@ -83,6 +90,10 @@ Java code is the same image everywhere. Key knobs:
   gets a `.<route>` suffix; used by sticky-session load-balancer scenarios.
 - `APP_NAME` — title shown in `MainLayout`, used by load balancer scenarios to distinguish
   which backend served the request.
+
+`Application.java` also registers `/sse-probe`, a plain non-Vaadin event stream emitting
+one tick every 500 ms. `curl -N <proxy-url>sse-probe` is the quickest way to tell whether
+a proxy buffers a streaming response — ticks must trickle in, not arrive in a burst.
 
 `Application.java` also registers `/test-redirect` → `/hello-flow` to verify the proxy
 preserves context paths through redirects. Any scenario reachable at `<proxy>/test-redirect`
@@ -94,7 +105,7 @@ should land on the Hello World Flow view at the proxy-relative URL.
 cd my-app
 ./mvnw                                       # spring-boot:run, default goal
 ./mvnw clean package -Pproduction            # production jar in target/
-./mvnw verify -Pit                           # integration tests profile (currently empty)
+./mvnw verify -Pit                           # `it` profile; the real suite lives in integration-tests/
 ```
 
 Java debug port is wired to 5684 via the spring-boot-maven-plugin's `jvmArguments`.
@@ -118,6 +129,15 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
   (Apache) or a synthesized `ROUTEID` cookie.
 - `multiple-root-context*` — two independent apps mapped under different prefixes by NGINX
   using rewrite rules (no `SERVER_SERVLET_CONTEXT_PATH` on the backend).
+- `*-sse` — same scenario but with PUSH over Server-Sent Events
+  (`VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS`), and a proxy config that deliberately has
+  **no** WebSocket support: no `upgrade=websocket`, no `ws://` worker, no `RewriteRule`
+  on the `Upgrade` header. Requires an app image built with `FLOW_VERSION` pointing at a
+  Flow that has the transport. Selecting a WebSocket transport in one of these
+  fails with a 501 from Atmosphere — that is the point of the scenario, not a bug.
+  Hilla `Flux` endpoints cannot work in these either: Hilla push is WebSocket-only
+  (`FluxConnection` sets transport and fallbackTransport both to `websocket`), so
+  the ITs skip those assertions via `-Dit.websocket=false`.
 - `root-context-legacy` (Apache HTTP only) — kept for comparison with older config style.
 
 When adding a new scenario, mirror an existing sibling: a `docker-compose.yml` that mounts
@@ -131,9 +151,16 @@ the shared `httpd.conf` (Apache) or a template (NGINX), plus the proxy-specific 
 - `mod_proxy_html` is **not** loaded in the shared `httpd.conf`, so absolute URLs embedded
   in HTML bypass the proxy. Test pages and configs avoid relying on response-body rewriting.
 - Apache's default WebSocket idle timeout is 60s; Vaadin PUSH heartbeats every 60s, which
-  is right at the edge. If a scenario shows random push disconnects, raise `ProxyTimeout`
-  or add `timeout=` to `ProxyPass` rather than chasing the symptom in app code. Same idea
-  for NGINX `proxy_read_timeout`.
+  is right at the edge. The shared `httpd.conf` now sets `ProxyTimeout 300`, and every
+  NGINX template sets `proxy_read_timeout 300s`, so this should no longer bite.
+- Anything that buffers a response body breaks SSE push. `mod_proxy_ajp` buffers unless
+  the worker carries `flushpackets=on`, and NGINX buffers and talks HTTP/1.0 upstream
+  unless the location sets `proxy_buffering off` and `proxy_http_version 1.1`. All of
+  these are set repo-wide — don't remove them when copying a config.
+- A `ProxyPass` to a `ws://` worker serves WebSocket **only**. Use
+  `http://… upgrade=websocket` instead (httpd ≥ 2.4.47), which upgrades only when the
+  client asks and proxies plain HTTP otherwise — SSE and long polling both need that,
+  since they POST client-to-server messages to the push URL.
 - Hilla endpoints are served from `/HILLA/*` and `/connect/*` regardless of
   `vaadin.url-mapping`. The `servlet-mapping*` configs need explicit `ProxyPassMatch` rules
   for those paths — don't assume the Vaadin URL mapping covers them.

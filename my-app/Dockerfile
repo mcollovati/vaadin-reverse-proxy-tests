@@ -9,6 +9,11 @@ FROM maven:3-eclipse-temurin-${JAVA_VERSION} AS build
 # version; CI passes --build-arg VAADIN_VERSION=<X.Y> to test other versions.
 ARG VAADIN_VERSION=
 
+# Optional Flow version override, independent of the platform version. Used to
+# build against a Flow branch snapshot, e.g.
+# --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT for the SSE push transport.
+ARG FLOW_VERSION=
+
 # Stop running as root at this point
 RUN useradd -m myuser
 WORKDIR /usr/src/app/
@@ -28,7 +33,7 @@ COPY --chown=myuser:myuser package.json ./
 COPY --chown=myuser:myuser package-lock.json* pnpm-lock.yaml* webpack.config.js* vite.config.js* ./
 
 # Build the production package, assuming that we validated the version before so no need for running tests again
-RUN mvn -ntp clean package -DskipTests ${VAADIN_VERSION:+-Dvaadin.version=$VAADIN_VERSION}
+RUN mvn -ntp clean package -DskipTests ${VAADIN_VERSION:+-Dvaadin.version=$VAADIN_VERSION} ${FLOW_VERSION:+-Dflow.version=$FLOW_VERSION}
 
 # Running stage: the part that is used for running the application
 FROM eclipse-temurin:${JAVA_VERSION}

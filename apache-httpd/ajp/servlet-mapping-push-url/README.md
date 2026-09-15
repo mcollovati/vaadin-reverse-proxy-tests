@@ -12,10 +12,16 @@ See [docker-compose.yml](./docker-compose.yml) for service definitions.
 Apache HTTPD config (`vaadin.conf`):
 
 ```apache
+# The relocated PUSH endpoint is proxied over http:// with upgrade=websocket
+# rather than ws://. Since httpd 2.4.47 that upgrades only when the client asks
+# for one, so a single rule carries WebSocket, SSE and long polling. A ws://
+# worker serves WebSocket only, and SSE both streams from and POSTs its
+# client-to-server messages to this same path.
+
 # Hilla browser-callables (/connect/*) live at backend root, not under /ui.
-ProxyPass           /ui/HILLA/push     ws://vaadin:8080/HILLA/push
-ProxyPass           /ui/VAADIN/push    ws://vaadin:8080/ui/VAADIN/push
-ProxyPass           /ui/HILLA/         ajp://vaadin:8009/HILLA/
-ProxyPass           /ui/connect/       ajp://vaadin:8009/connect/
-ProxyPass           /                  ajp://vaadin:8009/
+ProxyPass           /ui/HILLA/push     http://vaadin:8080/HILLA/push upgrade=websocket
+ProxyPass           /ui/VAADIN/push    http://vaadin:8080/ui/VAADIN/push upgrade=websocket
+ProxyPass           /ui/HILLA/         ajp://vaadin:8009/HILLA/ flushpackets=on
+ProxyPass           /ui/connect/       ajp://vaadin:8009/connect/ flushpackets=on
+ProxyPass           /                  ajp://vaadin:8009/ flushpackets=on
 ```
