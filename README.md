@@ -208,6 +208,30 @@ The base URL must match what the scenario exposes; see the `paths` column in
 | `multiple-root-context` | both `http://localhost:9090/ui1/` and `/ui2/` |
 | `https/*`, `ajp-https/*` | `https://localhost:9443/` |
 
+### Sweeping every scenario
+
+`scripts/run-all.sh` brings each scenario up, waits for it, runs the suite
+against every path it exposes, tears it down and prints a summary. Scenarios
+share the same ports, so it is strictly sequential — the GitHub Actions matrix
+does the same work in parallel on separate runners.
+
+It does not build the app image; build it first and pass the tag.
+
+```
+docker build my-app -t vaadin/my-app:latest
+scripts/run-all.sh --exclude '\-sse$'      # the 44 WebSocket scenarios
+
+docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT \
+                    --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT \
+                    -t vaadin/my-app:sse
+scripts/run-all.sh --app-version sse '\-sse$'   # the 19 SSE scenarios
+```
+
+`--dry-run` lists what would run without starting anything. Like the CI job, the
+push transport comes from the scenario name: `*-sse` scenarios run over
+`SERVER_SENT_EVENTS` with `-Dit.websocket=false`, everything else over the
+WebSocket transports.
+
 To smoke-test the raw app (no proxy) on `:8080`, build and start it directly:
 
 ```bash
