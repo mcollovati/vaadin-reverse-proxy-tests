@@ -85,6 +85,31 @@ if [[ $dry_run -eq 1 ]]; then
     exit 0
 fi
 
+# The compose files declare both `image:` and `build:`, and this script runs
+# `up --no-build`. Compose's default pull policy then fetches any image it
+# cannot find locally, so a tag that was never built fails partway through with
+# a registry error rather than an obvious one. Check it once, up front.
+command -v docker >/dev/null || { echo "docker is not installed" >&2; exit 1; }
+
+image="vaadin/my-app:$app_version"
+if ! docker image inspect "$image" >/dev/null 2>&1; then
+    {
+        echo "$image not found locally."
+        echo
+        echo "This script does not build the app image. Build it first:"
+        echo "    docker build my-app -t $image"
+        echo
+        local_tags="$(docker images vaadin/my-app --format '{{.Tag}}' 2>/dev/null | sort -u | paste -sd' ' -)"
+        if [[ -n ${local_tags:-} ]]; then
+            echo "Tags available locally: $local_tags"
+            echo "Pick one with --app-version <tag>."
+        else
+            echo "No vaadin/my-app image exists locally at all."
+        fi
+    } >&2
+    exit 1
+fi
+
 compose_file=""
 cleanup() {
     [[ -n $compose_file ]] && docker compose -f "$compose_file" down -v >/dev/null 2>&1 || true
