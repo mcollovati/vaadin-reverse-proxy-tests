@@ -210,7 +210,7 @@ The base URL must match what the scenario exposes; see the `paths` column in
 
 ### Sweeping every scenario
 
-`scripts/run-all.sh` brings each scenario up, waits for it, runs the suite
+`./run-all.sh` brings each scenario up, waits for it, runs the suite
 against every path it exposes, tears it down and prints a summary. Scenarios
 share the same ports, so it is strictly sequential — the GitHub Actions matrix
 does the same work in parallel on separate runners.
@@ -219,10 +219,10 @@ It does not build the app image; build it first and pass the tag.
 
 ```
 docker build my-app -t vaadin/my-app:latest
-scripts/run-all.sh --exclude '\-sse$'      # the 44 WebSocket scenarios
+./run-all.sh --exclude '\-sse$'      # the 44 WebSocket scenarios
 
 docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT -t vaadin/my-app:sse
-scripts/run-all.sh --app-version sse '\-sse$'   # the 19 SSE scenarios
+./run-all.sh --app-version sse '\-sse$'   # the 19 SSE scenarios
 ```
 
 `--dry-run` lists what would run without starting anything. Like the CI job, the

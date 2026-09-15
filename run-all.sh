@@ -10,10 +10,10 @@
 # The app image is NOT built here; build it first and pass the tag:
 #
 #   docker build my-app -t vaadin/my-app:latest
-#   scripts/run-all.sh
+#   ./run-all.sh
 #
 #   docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT -t vaadin/my-app:sse
-#   scripts/run-all.sh --app-version sse '\-sse$'
+#   ./run-all.sh --app-version sse '\-sse$'
 #
 # Like the CI job, each scenario's push transport is derived from its name: the
 # *-sse scenarios run over SERVER_SENT_EVENTS with WebSocket declared
@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$repo_root"
 
 usage() {
