@@ -26,7 +26,7 @@ on:
         description: "Run the *-sse scenarios. Needs a build whose Flow has the SSE push transport (Vaadin 25.3+/25.4+, or a flow_version that has it)."
         type: boolean
         required: false
-        default: false
+        default: true
 
 jobs:
   prepare:
