@@ -33,25 +33,27 @@ failures=0
 pass() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; failures=$((failures + 1)); }
 
-# Read one response header. The catch is that this is also used on /sse-probe,
-# which streams for 30s: curl downloads the body whatever -o points at, so it
-# gets cut short by --max-time every time, and piping the header dump does not
-# help — an awk that exits on the match leaves curl streaming into a pipe
-# nobody reads until the timeout, then exiting non-zero and taking the whole
-# script down with it. So the dump goes to a file, which curl writes before the
-# first byte of the body, and a cut-short request is only an error when it
-# yielded no headers at all.
+# Pull one header out of a `curl -D` dump.
+dump_header() {
+    tr -d '\r' < "$1" | awk -v h="$2" 'BEGIN{IGNORECASE=1} tolower($0) ~ "^" h ":" {
+              sub(/^[^:]*: */, ""); print; exit }'
+}
+
+# Read one response header from a URL that answers and closes, like the HTML
+# page. Not usable on /sse-probe: that response never ends on its own, so curl
+# would sit there until --max-time on every call. The probe's headers come off
+# the streaming request below instead.
 header() {
-    local url="$1" name="$2" dump err
+    local url="$1" name="$2" dump err out
     dump="$(mktemp)"
     err="$(mktemp)"
     if ! curl -sS -k --max-time 10 -o /dev/null -D "$dump" \
             -H 'Accept-Encoding: gzip' "$url" 2>"$err" && [[ ! -s $dump ]]; then
         cat "$err" >&2
     fi
-    tr -d '\r' < "$dump" | awk -v h="$name" 'BEGIN{IGNORECASE=1} tolower($0) ~ "^" h ":" {
-              sub(/^[^:]*: */, ""); print; exit }'
+    out=$(dump_header "$dump" "$name")
     rm -f "$dump" "$err"
+    printf '%s\n' "$out"
 }
 
 echo "Base URL: $base_url"
@@ -71,17 +73,52 @@ fi
 # or behind a proxy prefix (custom-to-root-context puts it under /app). So walk
 # the base URL's path up one segment at a time, ending at the origin, and use
 # the first level that answers with an event stream.
+#
+# One request per candidate does all three jobs. curl writes the -D dump before
+# the first byte of the body, so the same connection that times the ticks also
+# says what the content type and the encoding were — and --compressed decodes
+# the stream for the tick reader while leaving the raw Content-Encoding in the
+# dump. Asking for those headers separately is what used to make this script
+# slow: each such request landed on a live stream and burned the full
+# --max-time before curl gave up.
 origin=$(sed -E 's#^(https?://[^/]+).*#\1#' <<<"$base_url")
 path="${base_url#"$origin"}"
 path="${path%/}"
 
 probe_url=""
+probe_encoding=""
+ticks=0
+first=0
+last=0
+
 while :; do
     candidate="$origin$path/sse-probe"
-    if [[ $(header "$candidate" content-type) == text/event-stream* ]]; then
+    dump="$(mktemp)"
+
+    # The probe emits a tick every 500ms. Buffered anywhere along the way, the
+    # ticks all land at once at the end instead of trickling in. A candidate
+    # that is not the probe answers and closes, so this loop just falls through
+    # with no ticks. Breaking out closes the pipe under curl, which is why its
+    # stderr is discarded.
+    start=$(date +%s%N)
+    ticks=0
+    while IFS= read -r line; do
+        [[ $line == data:* ]] || continue
+        now=$(( ($(date +%s%N) - start) / 1000000 ))
+        [[ $ticks -eq 0 ]] && first=$now
+        last=$now
+        ticks=$((ticks + 1))
+        [[ $ticks -ge 6 ]] && break
+    done < <(curl "${curl_opts[@]}" -N --compressed -D "$dump" "$candidate" 2>/dev/null)
+
+    if [[ $(dump_header "$dump" content-type) == text/event-stream* ]]; then
         probe_url="$candidate"
+        probe_encoding=$(dump_header "$dump" content-encoding)
+        rm -f "$dump"
         break
     fi
+    rm -f "$dump"
+
     # An empty path means the origin itself was the candidate just tried.
     [[ -n $path ]] || break
     path="${path%/*}"
@@ -91,39 +128,20 @@ if [[ -z $probe_url ]]; then
     fail "no /sse-probe endpoint reachable from $base_url"
 else
     echo "Probe URL: $probe_url"
-    encoding=$(header "$probe_url" content-encoding)
-    if [[ -z $encoding ]]; then
+    if [[ -z $probe_encoding ]]; then
         pass "event stream is not compressed"
     else
-        fail "event stream is compressed (Content-Encoding: $encoding)"
+        fail "event stream is compressed (Content-Encoding: $probe_encoding)"
     fi
-
-    # The probe emits a tick every 500ms. Buffered anywhere along the way, the
-    # ticks all land at once at the end instead of trickling in.
-    start=$(date +%s%N)
-    first=0
-    last=0
-    ticks=0
-    while IFS= read -r line; do
-        [[ $line == data:* ]] || continue
-        now=$(( ($(date +%s%N) - start) / 1000000 ))
-        [[ $ticks -eq 0 ]] && first=$now
-        last=$now
-        ticks=$((ticks + 1))
-        # Breaking out closes the pipe under curl, which is why its stderr is
-        # discarded below.
-        [[ $ticks -ge 6 ]] && break
-    done < <(curl "${curl_opts[@]}" -N --compressed "$probe_url" 2>/dev/null)
 
     if [[ $ticks -lt 6 ]]; then
-        fail "only $ticks ticks received from the probe"
+        fail "event stream stopped early ($ticks of 6 ticks received)"
     elif [[ $((last - first)) -lt 1000 ]]; then
-        fail "6 ticks arrived within $((last - first))ms — the response is buffered"
+        fail "event stream is buffered (6 ticks arrived within $((last - first))ms, expected ~500ms apart)"
     else
-        pass "6 ticks trickled in over $((last - first))ms (first at ${first}ms)"
+        pass "event stream is not buffered (6 ticks over $((last - first))ms, ~500ms apart; first at ${first}ms)"
     fi
 fi
-
 echo
 if [[ $failures -eq 0 ]]; then
     echo "All checks passed."
