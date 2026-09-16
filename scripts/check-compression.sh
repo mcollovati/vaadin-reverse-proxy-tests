@@ -33,11 +33,25 @@ failures=0
 pass() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; failures=$((failures + 1)); }
 
+# Read one response header. The catch is that this is also used on /sse-probe,
+# which streams for 30s: curl downloads the body whatever -o points at, so it
+# gets cut short by --max-time every time, and piping the header dump does not
+# help — an awk that exits on the match leaves curl streaming into a pipe
+# nobody reads until the timeout, then exiting non-zero and taking the whole
+# script down with it. So the dump goes to a file, which curl writes before the
+# first byte of the body, and a cut-short request is only an error when it
+# yielded no headers at all.
 header() {
-    local url="$1" name="$2"
-    curl "${curl_opts[@]}" -o /dev/null -D - -H 'Accept-Encoding: gzip' "$url" \
-        | tr -d '\r' | awk -v h="$name" 'BEGIN{IGNORECASE=1} tolower($0) ~ "^" h ":" {
+    local url="$1" name="$2" dump err
+    dump="$(mktemp)"
+    err="$(mktemp)"
+    if ! curl -sS -k --max-time 10 -o /dev/null -D "$dump" \
+            -H 'Accept-Encoding: gzip' "$url" 2>"$err" && [[ ! -s $dump ]]; then
+        cat "$err" >&2
+    fi
+    tr -d '\r' < "$dump" | awk -v h="$name" 'BEGIN{IGNORECASE=1} tolower($0) ~ "^" h ":" {
               sub(/^[^:]*: */, ""); print; exit }'
+    rm -f "$dump" "$err"
 }
 
 echo "Base URL: $base_url"
