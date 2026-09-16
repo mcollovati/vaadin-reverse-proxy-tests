@@ -17,7 +17,7 @@ RewriteCond %{HTTP:Upgrade} websocket [NC]
 RewriteCond %{HTTP:Connection} upgrade [NC]
 RewriteRule ^/app/(.*) "ws://vaadin:8080/$1" [P,L]
 
-ProxyPass         "/app/"      ajp://vaadin:8009/
+ProxyPass         "/app/"      ajp://vaadin:8009/ flushpackets=on
 ProxyPassReverse  "/app/"      /
 ProxyPassReverseCookiePath "/" "/app"
 

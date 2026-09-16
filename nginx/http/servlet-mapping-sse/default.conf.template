@@ -1,0 +1,60 @@
+# SSE-only proxy: no `map $http_upgrade`, no Upgrade/Connection headers — this
+# config deliberately cannot upgrade a connection. Vaadin PUSH still works
+# because SSE is an ordinary HTTP GET that streams text/event-stream, and the
+# client-to-server messages are XHR POSTs to the same path.
+#
+# proxy_http_version 1.1 + proxy_buffering off are what make the stream flow:
+# with buffering left on (the default) nginx holds every event until its buffer
+# fills. proxy_read_timeout covers the 60s PUSH heartbeat.
+
+server {
+
+    listen       80;
+    server_name  localhost;
+
+    # Hilla resources (/HILLA/* push and /connect/* browser-callables) live at
+    # the backend's context root regardless of vaadin.url-mapping, so the
+    # proxy strips the /ui prefix for those (see vaadin/hilla#289).
+    location /ui/HILLA/ {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
+        proxy_pass http://vaadin:8080/HILLA/;
+    }
+
+    location /ui/connect/ {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
+        proxy_pass http://vaadin:8080/connect/;
+    }
+
+    # Catch-all so root-level resources (/VAADIN/*, /sw.js, /styles.css,
+    # /manifest.webmanifest, /icons/*, /test-redirect, ...) AND /ui/* paths
+    # handled by the Vaadin servlet (including /ui/VAADIN/push) reach the
+    # backend.
+    location / {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
+        proxy_pass http://vaadin:8080;
+    }
+}

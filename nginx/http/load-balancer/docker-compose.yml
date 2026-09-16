@@ -15,6 +15,9 @@ services:
     environment:
       APP_NAME: My App on vaadin-2
   web:
+    depends_on:
+      - vaadin-1
+      - vaadin-2
     image: nginx
     volumes:
       - ./default.conf.template:/etc/nginx/templates/default.conf.template

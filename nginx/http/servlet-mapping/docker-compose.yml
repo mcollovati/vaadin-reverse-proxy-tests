@@ -8,6 +8,8 @@ services:
     environment:
       - VAADIN_URL_MAPPING=/ui/*
   web:
+    depends_on:
+      - vaadin
     image: nginx
     volumes:
       - ./default.conf.template:/etc/nginx/templates/default.conf.template

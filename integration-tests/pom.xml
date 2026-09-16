@@ -18,6 +18,14 @@
         <junit.version>5.11.4</junit.version>
         <failsafe.version>3.5.5</failsafe.version>
         <app.base.url>http://localhost:8080/</app.base.url>
+        <!-- Comma-separated push transports the transport-parameterized tests
+             run through. The *-sse scenarios override this with
+             SERVER_SENT_EVENTS, since their proxy cannot upgrade. -->
+        <it.push.transports>WEBSOCKET_XHR,WEBSOCKET</it.push.transports>
+        <!-- Whether the scenario proxy can upgrade a connection. The *-sse
+             scenarios set it to false, which skips the Hilla push assertions:
+             Hilla FluxConnection is WebSocket-only. -->
+        <it.websocket>true</it.websocket>
     </properties>
 
     <dependencies>
@@ -74,6 +82,8 @@
                     <enableAssertions>true</enableAssertions>
                     <systemPropertyVariables>
                         <app.base.url>${app.base.url}</app.base.url>
+                        <it.push.transports>${it.push.transports}</it.push.transports>
+                        <it.websocket>${it.websocket}</it.websocket>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

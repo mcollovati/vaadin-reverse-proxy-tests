@@ -19,6 +19,13 @@ server {
 
         rewrite ^(${VAADIN1_PATH})$ $scheme://$http_host$1/ permanent;
         rewrite "(?i)${VAADIN1_PATH}/(.*)" /$1 break;
+        # Vaadin PUSH streams its response. Without an HTTP/1.1 upstream
+        # and buffering turned off, nginx holds each SSE event until its
+        # buffer fills; the timeout covers the 60s PUSH heartbeat.
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
         proxy_pass http://vaadin1:8080;
     }
 
@@ -33,7 +40,13 @@ server {
 
         rewrite ^(${VAADIN2_PATH})$ $scheme://$http_host$1/ permanent;
         rewrite "(?i)${VAADIN2_PATH}/(.*)" /$1 break;
+        # Vaadin PUSH streams its response. Without an HTTP/1.1 upstream
+        # and buffering turned off, nginx holds each SSE event until its
+        # buffer fills; the timeout covers the 60s PUSH heartbeat.
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
         proxy_pass http://vaadin2:8080;
     }
-
 }

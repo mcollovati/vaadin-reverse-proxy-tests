@@ -27,8 +27,8 @@ RewriteRule ^/(ui/(HILLA)|(ui))/(.*) "ws://vaadin:8080/app/$2$3/$4" [P,L]
 
 # Hilla browser-callables and push: backend serves them at /app/HILLA and
 # /app/connect (context root), not under /ui.
-ProxyPass         /ui/HILLA/    ajp://vaadin:8009/app/HILLA/
-ProxyPass         /ui/connect/  ajp://vaadin:8009/app/connect/
-ProxyPass         /             ajp://vaadin:8009/app/
+ProxyPass         /ui/HILLA/    ajp://vaadin:8009/app/HILLA/ flushpackets=on
+ProxyPass         /ui/connect/  ajp://vaadin:8009/app/connect/ flushpackets=on
+ProxyPass         /             ajp://vaadin:8009/app/ flushpackets=on
 ProxyPassReverseCookiePath "/app" "/"
 ```

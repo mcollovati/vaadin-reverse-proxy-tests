@@ -9,6 +9,8 @@ services:
       # wss:// for PUSH and absolute URLs are built with the public scheme.
       SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
   web:
+    depends_on:
+      - vaadin
     image: nginx
     volumes:
       - ./default.conf.template:/etc/nginx/templates/default.conf.template

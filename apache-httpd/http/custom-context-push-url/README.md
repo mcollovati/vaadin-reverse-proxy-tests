@@ -12,16 +12,24 @@ See [docker-compose.yml](./docker-compose.yml) for service definitions.
 Apache HTTPD config (`vaadin.conf`):
 
 ```apache
-<Location /app/>
-    ProxyPass               http://vaadin:8080/app/
-    ProxyPassReverse        http://vaadin:8080/app/
-</Location>
+# The relocated PUSH endpoint is proxied over http:// with upgrade=websocket
+# rather than ws://. Since httpd 2.4.47 that upgrades only when the client asks
+# for one, so a single rule carries WebSocket, SSE and long polling.
+#
+# ORDER MATTERS: mod_proxy shares a worker when one worker URL is a leading
+# substring of another defined later, silently dropping the later one's
+# parameters -- upgrade=websocket included. Longest backend URL first.
 
 <Location /app/VAADIN/push>
-    ProxyPass               ws://vaadin:8080/app/VAADIN/push
+    ProxyPass               http://vaadin:8080/app/VAADIN/push upgrade=websocket
 </Location>
 
 <Location /app/HILLA/push>
-    ProxyPass               ws://vaadin:8080/app/HILLA/push
+    ProxyPass               http://vaadin:8080/app/HILLA/push upgrade=websocket
+</Location>
+
+<Location /app/>
+    ProxyPass               http://vaadin:8080/app/
+    ProxyPassReverse        http://vaadin:8080/app/
 </Location>
 ```

@@ -4,6 +4,11 @@ import com.vaadin.flow.router.AfterNavigationEvent;
 import com.vaadin.flow.router.AfterNavigationObserver;
 import org.springframework.beans.factory.annotation.Value;
 
+import java.util.List;
+import java.util.stream.Stream;
+
+import com.vaadin.experimental.FeatureFlags;
+import com.vaadin.flow.component.PushConfiguration;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
@@ -19,8 +24,10 @@ import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
 import com.vaadin.flow.router.Layout;
 import com.vaadin.flow.server.VaadinRequest;
+import com.vaadin.flow.server.VaadinService;
 import com.vaadin.flow.server.menu.MenuConfiguration;
 import com.vaadin.flow.server.menu.MenuEntry;
+import com.vaadin.flow.shared.communication.PushMode;
 import com.vaadin.flow.shared.ui.Transport;
 
 /**
@@ -57,9 +64,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
 
         Select<Transport> pushTransport = new Select<>();
         pushTransport.setLabel("Push Transport");
-        pushTransport.setItems(Transport.values());
-        pushTransport.addValueChangeListener(event -> UI.getCurrent()
-                .getPushConfiguration().setTransport(event.getValue()));
+        pushTransport.setItems(availableTransports());
+        pushTransport.addValueChangeListener(
+                event -> switchTransport(event.getValue()));
         pushTransport.setValue(
                 UI.getCurrent().getPushConfiguration().getTransport());
 
@@ -68,6 +75,49 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         Scroller scroller = new Scroller(createNavigation());
 
         addToDrawer(header, pushTransport, scroller, createFooter());
+    }
+
+    /**
+     * Switches the push transport of the live connection.
+     * <p>
+     * {@link PushConfiguration#setTransport} documents that "the new transport
+     * type will not be used until the push channel is disconnected and
+     * reconnected if already active" — the client copies the transport into the
+     * Atmosphere configuration in {@code AtmospherePushConnection.init()} and
+     * watches only {@code pushMode} for changes. Toggling push off and on is
+     * that reconnect.
+     * <p>
+     * The toggle has to span two client round-trips, which is what the
+     * {@code executeJs} hop buys. Setting DISABLED and then AUTOMATIC inside a
+     * single response would leave the value unchanged as far as the client is
+     * concerned, so no change event would fire and the connection would never
+     * be re-created.
+     */
+    private void switchTransport(Transport transport) {
+        UI ui = UI.getCurrent();
+        PushConfiguration push = ui.getPushConfiguration();
+        push.setTransport(transport);
+        push.setPushMode(PushMode.DISABLED);
+        ui.getPage().executeJs("return true").then(Boolean.class,
+                ignored -> push.setPushMode(PushMode.AUTOMATIC));
+    }
+
+    /**
+     * The transports the running Flow build actually offers.
+     * <p>
+     * SERVER_SENT_EVENTS is experimental: selecting it while the
+     * {@code ssePushTransport} feature flag is off throws server-side, so it is
+     * only listed once the flag is on. Matching on the transport identifier
+     * instead of the enum constant keeps this compiling against Flow versions
+     * that predate the transport.
+     */
+    private static List<Transport> availableTransports() {
+        FeatureFlags featureFlags = FeatureFlags
+                .get(VaadinService.getCurrent().getContext());
+        return Stream.of(Transport.values())
+                .filter(transport -> !"sse".equals(transport.getIdentifier())
+                        || featureFlags.isEnabled("ssePushTransport"))
+                .toList();
     }
 
     private SideNav createNavigation() {

@@ -26,6 +26,21 @@ Usage: $0 [-i|--interactive] <base-url> [-- mvn-args…]
     $0 http://localhost:9090/ -- -Dfoo=bar -X
     $0 -i http://localhost:9090/
     $0 -i http://localhost:9090/ -- -Pdebug
+
+  Push transports:
+    The transport-parameterized tests run over WEBSOCKET_XHR and WEBSOCKET by
+    default. Override with -Dit.push.transports, e.g. when testing a *-sse
+    scenario (whose proxy cannot upgrade a connection) or an app image built
+    against a Flow that has the SSE transport:
+
+    $0 http://localhost:9090/ -- -Dit.push.transports=SERVER_SENT_EVENTS
+
+    Pass -Dit.websocket=false for a proxy with no upgrade support (the *-sse
+    scenarios). It skips the Hilla push assertions, since Hilla's
+    FluxConnection is WebSocket-only with no fallback:
+
+    $0 http://localhost:9090/ -- -Dit.push.transports=SERVER_SENT_EVENTS \\
+                                 -Dit.websocket=false
 EOF
 }
 

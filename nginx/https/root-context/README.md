@@ -37,11 +37,15 @@ server {
         proxy_set_header        Upgrade $http_upgrade;
         proxy_set_header        Connection $connection_upgrade;
 
+        # Vaadin PUSH streams its response. Without an HTTP/1.1 upstream
+        # and buffering turned off, nginx holds each SSE event until its
+        # buffer fills; the timeout covers the 60s PUSH heartbeat.
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
         proxy_pass http://vaadin:8080${VAADIN_PATH};
         proxy_redirect $scheme://$host${VAADIN_PATH} $scheme://$http_host${VAADIN_PATH};
-
-        # Can be tuned if the Vaadin PUSH websocket gets closed unexpectedly
-        # proxy_read_timeout 90
     }
 }
 ```
