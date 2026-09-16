@@ -177,3 +177,11 @@ the shared `httpd.conf` (Apache) or a template (NGINX), plus the proxy-specific 
 - Hilla endpoints are served from `/HILLA/*` and `/connect/*` regardless of
   `vaadin.url-mapping`. The `servlet-mapping*` configs need explicit `ProxyPassMatch` rules
   for those paths — don't assume the Vaadin URL mapping covers them.
+- An NGINX `upstream` without a `zone` keeps peer health state **per worker process**. A
+  backend that refused a connection while it was booting stays blacklisted (`max_fails=1`,
+  `fail_timeout=10s` by default) only in the workers that saw the refusal, so a readiness
+  probe answered by a clean worker proves nothing and a later request can still come back
+  502 `no live upstreams`. Both `load-balancer*` templates declare
+  `zone application_balancer 64k;` — keep it when copying one. The same startup race arms
+  Apache's balancer (`retry`, 60s by default), so CI waits for every published backend port
+  to accept a connection before any request reaches the proxy.

@@ -155,6 +155,31 @@ jobs:
       - name: Start scenario stack
         run: docker compose -f "$COMPOSE_FILE" up -d --no-build
 
+      # Nothing may reach the proxy before the backends accept connections. A
+      # proxy that gets a refused connection remembers it: nginx takes the peer
+      # out of rotation for fail_timeout, Apache for `retry` seconds, and with
+      # two backends that verdict outlives the readiness probe below, which a
+      # single healthy backend (or, in nginx, a single clean worker process) is
+      # enough to satisfy. The published backend ports come from the compose
+      # file itself, so a container that has not started yet cannot be missed.
+      - name: Wait for backends to accept connections
+        run: |
+          set -eu
+          ports=$(docker compose -f "$COMPOSE_FILE" config --format json \
+            | jq -r '.services | to_entries[]
+                     | select(.key | startswith("vaadin"))
+                     | (.value.ports // [])[]
+                     | select(.published != null) | .published | tostring')
+          for port in $ports; do
+            echo "Waiting for backend port $port ..."
+            ok=0
+            for _ in $(seq 1 120); do
+              if (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null; then ok=1; break; fi
+              sleep 1
+            done
+            [ "$ok" -eq 1 ] || { echo "::error::Timed out waiting for backend port $port"; exit 1; }
+          done
+
       - name: Wait for proxy to be ready
         run: |
           set -eu

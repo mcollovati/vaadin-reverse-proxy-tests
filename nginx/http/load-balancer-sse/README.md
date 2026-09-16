@@ -18,6 +18,14 @@ NGINX template (`nginx/http/load-balancer-sse/default.conf.template`):
 # session, not just one long-lived socket.
 
 upstream application_balancer {
+    # Peer health state lives in a shared memory zone. Without it every worker
+    # process keeps its own verdict, so a backend that refused a connection
+    # while it was still booting stays blacklisted in the workers that saw the
+    # refusal, while the others serve happily: a readiness probe answered by a
+    # clean worker proves nothing about the rest. With a zone, one success
+    # clears the backend for the whole proxy.
+    zone application_balancer 64k;
+
     server vaadin-1:8080;
     server vaadin-2:8080;
 
