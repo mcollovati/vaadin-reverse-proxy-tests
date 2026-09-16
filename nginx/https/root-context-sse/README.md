@@ -19,6 +19,15 @@ NGINX template (`nginx/https/root-context-sse/default.conf.template`):
 # from the advertised scheme, and an https page may not open an http:// event
 # stream, the browser blocks it as mixed content.
 
+# Compression on, the way a real deployment has it — but never over a streamed
+# response: text/event-stream (SSE push) and text/plain (streaming and long
+# polling) are deliberately absent from gzip_types. text/html is always
+# compressed and cannot be taken off the list.
+gzip              on;
+gzip_proxied      any;
+gzip_types        text/css application/javascript application/json
+                  application/xml image/svg+xml;
+
 server {
 
     listen       443 ssl;
