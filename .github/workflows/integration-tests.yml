@@ -197,6 +197,20 @@ jobs:
             for _ in $(seq 1 20); do curl -fsk -o /dev/null "$url" || true; done
           done
 
+      # Every proxy config runs with compression on; what must never be
+      # compressed is a streamed response. Asserts that an ordinary HTML
+      # response is gzipped, that /sse-probe is not, and that its ticks still
+      # arrive one at a time rather than in a burst at the end.
+      - name: Check compression leaves the event stream alone
+        run: |
+          set -eu
+          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
+            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
+            echo "::group::Compression check against $url"
+            scripts/check-compression.sh "$url"
+            echo "::endgroup::"
+          done
+
       - name: Run integration tests
         run: |
           set -eu

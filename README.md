@@ -408,6 +408,49 @@ The transport-parameterized tests take their transport list from
 ./run-test.sh http://localhost:9090/ -- -Dit.push.transports=SERVER_SENT_EVENTS
 ```
 
+## Compression
+
+Every proxy in this repo runs with compression on — `mod_deflate` on Apache,
+`gzip on` on nginx — because that is how a real deployment runs, and a config
+that only works with compression disabled is not one anyone can copy. What none
+of them compress is a **streamed** response.
+
+Vaadin PUSH answers with `text/event-stream` over SSE and with `text/plain`
+over streaming and long polling (`PushHandler` sets that content type when the
+connection is established), so neither type is in `gzip_types` /
+`AddOutputFilterByType`. Apache additionally skips compression for any request
+that asks for `text/event-stream` and for the push endpoints, whatever they
+answer with:
+
+```apache
+SetEnvIfNoCase Accept      text/event-stream          no-gzip=1
+SetEnvIfNoCase Request_URI "/(VAADIN|HILLA)/push"     no-gzip=1
+```
+
+Compressing a stream does *not* stall it by itself: both `mod_deflate` and
+nginx's gzip filter flush per event, so the ticks still trickle in as long as
+`proxy_buffering off` (nginx) and `flushpackets=on` (AJP) are in place. Two
+things make it a bad idea anyway:
+
+- a deflate context stays allocated for the whole life of every push
+  connection, which is the whole life of every open browser tab;
+- Atmosphere writes 2000 bytes of padding when an SSE connection opens,
+  precisely so that a buffering intermediary is forced to flush. Compressed,
+  those 2000 identical characters become a couple of dozen bytes and the
+  padding stops doing its job — so the setup breaks the moment another
+  buffering hop appears in front of the proxy.
+
+### Checking it on a running scenario
+
+```
+scripts/check-compression.sh http://localhost:9090/
+scripts/check-compression.sh https://localhost:9443/   # https scenarios
+```
+
+It asserts that an ordinary HTML response *is* compressed (otherwise the rest
+proves nothing), that `/sse-probe` is *not*, and that its ticks still arrive one
+at a time.
+
 ## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so

@@ -159,6 +159,17 @@ the shared `httpd.conf` (Apache) or a template (NGINX), plus the proxy-specific 
   the worker carries `flushpackets=on`, and NGINX buffers and talks HTTP/1.0 upstream
   unless the location sets `proxy_buffering off` and `proxy_http_version 1.1`. All of
   these are set repo-wide — don't remove them when copying a config.
+- Compression is **on** repo-wide (`mod_deflate` in the shared `httpd.conf`, `gzip on` in
+  every NGINX template) but never over a stream. `text/event-stream` (SSE push) and
+  `text/plain` (streaming/long polling — `PushHandler` sets that content type on the push
+  response) are deliberately absent from `gzip_types` / `AddOutputFilterByType`, and Apache
+  additionally sets `no-gzip` for requests that `Accept: text/event-stream` and for
+  `/(VAADIN|HILLA)/push`. Compressing a stream does not stall it — both compressors flush
+  per event — but it holds a deflate context open for the life of every push connection and
+  it shrinks Atmosphere's 2000-byte SSE padding, the padding whose whole job is to force a
+  buffering intermediary to flush, to a couple of dozen bytes.
+  `scripts/check-compression.sh <base-url>` checks a running scenario: HTML compressed,
+  `/sse-probe` not compressed, ticks still trickling.
 - A `ProxyPass` to a `ws://` worker serves WebSocket **only**. Use
   `http://… upgrade=websocket` instead (httpd ≥ 2.4.47), which upgrades only when the
   client asks and proxies plain HTTP otherwise — SSE and long polling both need that,
