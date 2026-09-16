@@ -65,15 +65,26 @@ else
     echo "       compression is off, so the stream checks below prove nothing"
 fi
 
-# 2 + 3. The event stream. /sse-probe is registered at the context root, so for
-# a scenario whose base URL sits under a servlet mapping it lives at the origin
-# instead; try both and use whichever answers with an event stream.
+# 2 + 3. The event stream. /sse-probe is registered at the context root, which
+# is not always where the base URL points: a servlet-mapping scenario appends
+# /ui to it, and the context root itself may sit at the origin (root-context)
+# or behind a proxy prefix (custom-to-root-context puts it under /app). So walk
+# the base URL's path up one segment at a time, ending at the origin, and use
+# the first level that answers with an event stream.
+origin=$(sed -E 's#^(https?://[^/]+).*#\1#' <<<"$base_url")
+path="${base_url#"$origin"}"
+path="${path%/}"
+
 probe_url=""
-for candidate in "${base_url}sse-probe" "$(sed -E 's#^(https?://[^/]+)/.*#\1#' <<<"$base_url")/sse-probe"; do
+while :; do
+    candidate="$origin$path/sse-probe"
     if [[ $(header "$candidate" content-type) == text/event-stream* ]]; then
         probe_url="$candidate"
         break
     fi
+    # An empty path means the origin itself was the candidate just tried.
+    [[ -n $path ]] || break
+    path="${path%/*}"
 done
 
 if [[ -z $probe_url ]]; then
