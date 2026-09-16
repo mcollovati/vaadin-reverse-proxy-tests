@@ -115,4 +115,4 @@ if [[ $interactive -eq 1 ]]; then
     mvn_args+=("-Dit.test=$selection_csv")
 fi
 
-exec ./mvnw -B verify -Dapp.base.url="$base_url" "${mvn_args[@]}"
+exec ./mvnw -ntp -B verify -Dapp.base.url="$base_url" "${mvn_args[@]}"

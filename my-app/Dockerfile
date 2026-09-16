@@ -22,7 +22,7 @@ USER myuser
 
 # Copy pom.xml and prefetch dependencies so a repeated build can continue from the next step with existing dependencies
 COPY --chown=myuser pom.xml ./
-RUN mvn dependency:go-offline
+RUN mvn -ntp dependency:go-offline
 
 # Copy all needed project files to a folder
 COPY --chown=myuser:myuser src src
