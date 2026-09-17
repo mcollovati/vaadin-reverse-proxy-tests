@@ -67,8 +67,9 @@ write_readme() {
 
     local proxy_dir="${key%/*}"        # e.g. apache-httpd/http
     local scenario_name="${key##*/}"   # e.g. root-context
-    local title="$(proxy_label "$proxy_dir") — $scenario_name"
-    local origin="$(proxy_origin "$proxy_dir")"
+    local title origin
+    title="$(proxy_label "$proxy_dir") — $scenario_name"
+    origin="$(proxy_origin "$proxy_dir")"
 
     local readme="$scenario_dir/README.md"
     {
