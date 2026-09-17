@@ -132,10 +132,9 @@ write_readme() {
                     echo "The entryPoints and the file provider come from the shared"
                     echo "[traefik.yml](../../traefik.yml), mounted read-only."
                 else
-                    echo "_This scenario is configured with Docker labels in"
-                    echo "docker-compose.yml rather than a config file — it exists to"
-                    echo "document that idiom. Every other Traefik scenario uses the file"
-                    echo "provider._"
+                    echo "_Configured with Docker labels in docker-compose.yml rather than a"
+                    echo "config file: this scenario exists to document that idiom. Every"
+                    echo "other Traefik scenario uses the file provider._"
                 fi
                 ;;
         esac

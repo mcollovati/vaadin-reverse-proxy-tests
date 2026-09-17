@@ -123,6 +123,7 @@ else
                         "nginx/https" \
                         "traefik/http" \
                         "traefik/https" \
+                        "traefik/labels" \
                         | gum filter \
                             --header "Reverse proxy (type to filter, Esc to quit):" \
                             --placeholder "Filter proxies…"); then
