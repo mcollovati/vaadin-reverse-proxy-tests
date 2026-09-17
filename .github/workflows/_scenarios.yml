@@ -1,0 +1,461 @@
+name: Scenarios
+
+# All the scenario-running logic lives here, once. The per-proxy workflows
+# (apache.yml, nginx.yml, ...) are thin callers that only decide *when* to run
+# and *which* tree to run, so a change to how a scenario is exercised is a
+# one-file change no matter how many proxies the repo grows.
+
+on:
+  workflow_call:
+    inputs:
+      proxy:
+        description: "Proxy tree to run, e.g. apache-httpd, nginx. Empty = all."
+        type: string
+        default: ""
+      scenario_filter:
+        description: "Extra extended-regex filter, ANDed with `proxy`."
+        type: string
+        default: ""
+      include_sse:
+        description: "Run the *-sse scenarios. Needs a build whose Flow has the SSE push transport."
+        type: boolean
+        default: true
+      vaadin_version:
+        description: "Vaadin version to build (empty = pom default). Also used as the my-app image tag."
+        type: string
+        default: ""
+      flow_version:
+        description: "Flow version override, e.g. a branch snapshot. Empty = whatever the platform version pulls in."
+        type: string
+        default: ""
+      java_version:
+        description: "JDK for the test runner and the my-app build/runtime image."
+        type: string
+        default: "21"
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+      count: ${{ steps.gen.outputs.count }}
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          tag="${{ inputs.vaadin_version }}"
+          [ -z "$tag" ] && tag="latest"
+          if [ -n "${{ inputs.flow_version }}" ]; then
+            # A Flow override yields a different artifact from the same platform
+            # version, so give it its own tag instead of overwriting the default.
+            tag="$tag-flow-${{ inputs.flow_version }}"
+          fi
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Generate scenario matrix
+        id: gen
+        run: |
+          set -eu
+          # `proxy` narrows to one tree; `scenario_filter` narrows further. Both
+          # are extended regexes matched against the scenario key, so ANDing them
+          # means anchoring the proxy prefix and letting the filter match anywhere
+          # after it.
+          filter='${{ inputs.proxy }}'
+          if [ -n '${{ inputs.scenario_filter }}' ]; then
+            filter="${filter:+^$filter.*}"'${{ inputs.scenario_filter }}'
+          fi
+          # The *-sse scenarios need an app image whose Flow has the SSE push
+          # transport. The pom's pinned version may predate it, so they are opt-in.
+          exclude=''
+          [ "${{ inputs.include_sse }}" = "true" ] || exclude='\-sse$'
+          matrix="$(scripts/gen-matrix.sh "$filter" "$exclude")"
+          n="$(echo "$matrix" | jq length)"
+          [ "$n" -gt 0 ] \
+            || { echo "::error::No scenarios matched filter '$filter'"; exit 1; }
+          # A silently truncated matrix is far worse than a clear failure, and the
+          # repo is heading for four proxy trees.
+          [ "$n" -le 256 ] \
+            || { echo "::error::$n matrix jobs exceeds GitHub's 256 limit"; exit 1; }
+          {
+            echo "matrix=$matrix"
+            echo "count=$n"
+          } >> "$GITHUB_OUTPUT"
+          echo "Matched $n scenario(s)."
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: prepare
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build my-app image
+        run: |
+          docker build my-app \
+            --build-arg VAADIN_VERSION="${{ inputs.vaadin_version }}" \
+            --build-arg FLOW_VERSION="${{ inputs.flow_version }}" \
+            --build-arg JAVA_VERSION="${{ inputs.java_version }}" \
+            -t "vaadin/my-app:${{ needs.prepare.outputs.image_tag }}"
+
+      # One tarball carries everything a scenario job needs, so no test job ever
+      # touches Docker Hub. Anonymous pulls are rate-limited per source IP and
+      # GitHub-hosted runners share egress, so pulling the proxy image in every
+      # one of N jobs was both a cost and a live flake source.
+      - name: Pull the pinned proxy images
+        run: grep -v '^#' .github/proxy-images.txt | grep -v '^[[:space:]]*$' | xargs -r -n1 docker pull
+
+      - name: Save images
+        run: |
+          set -eu
+          proxies="$(grep -v '^#' .github/proxy-images.txt | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
+          # shellcheck disable=SC2086
+          docker save "vaadin/my-app:${{ needs.prepare.outputs.image_tag }}" $proxies \
+            | gzip > images.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: images-${{ inputs.proxy && inputs.proxy || 'all' }}
+          path: images.tar.gz
+          retention-days: 1
+          compression-level: 0
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, build]
+    strategy:
+      fail-fast: false
+      # Matches the effective concurrency ceiling observed on this account, and
+      # keeps a large matrix from queueing unpredictably.
+      max-parallel: 20
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    env:
+      COMPOSE_FILE: ${{ matrix.scenario }}/docker-compose.yml
+      MY_APP_VERSION: ${{ needs.prepare.outputs.image_tag }}
+      SCENARIO_PATHS: ${{ toJson(matrix.paths) }}
+      # A scenario connects over the transport its own compose file configures:
+      # the *-sse ones set VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS, the rest
+      # bootstrap over WebSocket.
+      PUSH_TRANSPORTS: ${{ endsWith(matrix.scenario, '-sse') && 'SERVER_SENT_EVENTS' || 'WEBSOCKET_XHR,WEBSOCKET' }}
+      # The *-sse proxies cannot upgrade a connection, so Hilla's reactive
+      # endpoints cannot work there: FluxConnection subscribes with transport
+      # and fallbackTransport both 'websocket'. Those assertions are skipped.
+      IT_WEBSOCKET: ${{ endsWith(matrix.scenario, '-sse') && 'false' || 'true' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Sanitize scenario id
+        id: id
+        run: echo "id=$(echo '${{ matrix.scenario }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Download images
+        uses: actions/download-artifact@v8
+        with:
+          name: images-${{ inputs.proxy && inputs.proxy || 'all' }}
+
+      - name: Load images
+        run: docker load < images.tar.gz
+
+      - name: Set up JDK ${{ inputs.java_version }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java_version }}
+          cache: maven
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('integration-tests/pom.xml') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      # System libraries for Chromium need root, which the Maven-driven browser
+      # install below (running as the runner user) cannot get. Install them via
+      # Playwright's npm CLI, which handles sudo. Keep the version in sync with
+      # integration-tests/pom.xml's playwright.version — lint.yml enforces it.
+      - name: Install Playwright system dependencies
+        run: npx --yes playwright@1.50.0 install-deps chromium
+
+      - name: Install Playwright browser
+        working-directory: integration-tests
+        run: |
+          ./mvnw -ntp -B test-compile
+          ./mvnw -ntp -B exec:java \
+            -Dexec.classpathScope=test \
+            -Dexec.mainClass=com.microsoft.playwright.CLI \
+            -Dexec.args="install chromium"
+
+      - name: Start scenario stack
+        run: docker compose -f "$COMPOSE_FILE" up -d --no-build
+
+      # Nothing may reach the proxy before the backends accept connections. A
+      # proxy that gets a refused connection remembers it: nginx takes the peer
+      # out of rotation for fail_timeout, Apache for `retry` seconds, and with
+      # two backends that verdict outlives the readiness probe below, which a
+      # single healthy backend (or, in nginx, a single clean worker process) is
+      # enough to satisfy. The published backend ports come from the compose
+      # file itself, so a container that has not started yet cannot be missed.
+      #
+      # Backends are identified by their image rather than by a `vaadin*` service
+      # name: a new proxy tree that names its app service something else would
+      # otherwise get a step that silently waits for nothing and passes.
+      - name: Wait for backends to accept connections
+        run: |
+          set -eu
+          ports=$(docker compose -f "$COMPOSE_FILE" config --format json \
+            | jq -r '.services | to_entries[]
+                     | select((.value.image // "") | startswith("vaadin/my-app"))
+                     | (.value.ports // [])[]
+                     | select(.published != null) | .published | tostring')
+          [ -n "$ports" ] \
+            || { echo "::error::No published backend ports found in $COMPOSE_FILE"; exit 1; }
+          for port in $ports; do
+            echo "Waiting for backend port $port ..."
+            ok=0
+            for _ in $(seq 1 120); do
+              if (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null; then ok=1; break; fi
+              sleep 1
+            done
+            [ "$ok" -eq 1 ] || { echo "::error::Timed out waiting for backend port $port"; exit 1; }
+          done
+
+      - name: Wait for proxy to be ready
+        run: |
+          set -eu
+          fail=0
+          # Require consecutive successes. A single 200 is not enough for a load
+          # balancer: it only proves one backend is up, and a backend that was
+          # refused earlier stays blacklisted by the proxy for its fail_timeout,
+          # so requests keep returning 502 after the app has started listening.
+          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
+            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
+            echo "Waiting for $url ..."
+            ok=0
+            streak=0
+            for _ in $(seq 1 90); do
+              if curl -fsk -o /dev/null "$url"; then
+                streak=$((streak + 1))
+                if [ "$streak" -ge 3 ]; then ok=1; break; fi
+              else
+                streak=0
+              fi
+              sleep 1
+            done
+            if [ "$ok" -ne 1 ]; then echo "::error::Timed out waiting for $url"; fail=1; fi
+          done
+          [ "$fail" -eq 0 ]
+
+      # Sticky-cookie load balancers (nginx `sticky cookie`, Apache balancer)
+      # round-robin the first, cookie-less request, so a fresh browser session
+      # can land on a backend the single readiness probe above never touched.
+      # Under CI contention that cold backend's first Vaadin render can exceed
+      # Playwright's 5s assertion timeout, failing the suite. Issue a burst of
+      # cookie-less requests per path so round-robin warms every backend's JVM
+      # before the tests run. No-op overhead for single-backend scenarios.
+      - name: Warm all backends
+        run: |
+          set -eu
+          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
+            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
+            echo "Warming $url ..."
+            for _ in $(seq 1 20); do curl -fsk -o /dev/null "$url" || true; done
+          done
+
+      - name: Run integration tests
+        id: it
+        run: |
+          set -eu
+          start=$SECONDS
+          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
+            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
+            echo "::group::Tests against $url"
+            ./run-test.sh "$url" -- -Dit.push.transports="$PUSH_TRANSPORTS" -Dit.websocket="$IT_WEBSOCKET"
+            echo "::endgroup::"
+          done
+          echo "duration=$((SECONDS - start))" >> "$GITHUB_OUTPUT"
+
+      # Every proxy config runs with compression on; what must never be
+      # compressed is a streamed response. Asserts that an ordinary HTML
+      # response is gzipped, that /sse-probe is not, and that its ticks still
+      # arrive one at a time rather than in a burst at the end.
+      #
+      # This runs *after* the tests, and runs even when they failed. As a gate in
+      # front of them it could skip the entire suite: runs 35136594973 and
+      # 35138856877 were 63/63 jobs red with not one integration test executed.
+      # "Compression broke the stream" and "the app does not work through this
+      # proxy" are separate findings and neither may hide the other.
+      - name: Check compression leaves the event stream alone
+        id: compression
+        if: always() && steps.it.conclusion != 'skipped'
+        run: |
+          set -eu
+          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
+            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
+            echo "::group::Compression check against $url"
+            scripts/check-compression.sh "$url"
+            echo "::endgroup::"
+          done
+
+      - name: Record result
+        id: result
+        if: always()
+        run: |
+          set -eu
+          it='${{ steps.it.outcome }}'
+          comp='${{ steps.compression.outcome }}'
+          if [ "$it" = "success" ] && { [ "$comp" = "success" ] || [ "$comp" = "skipped" ]; }; then
+            status=pass
+          else
+            status=fail
+          fi
+          jq -nc \
+            --arg scenario '${{ matrix.scenario }}' \
+            --arg transport "$PUSH_TRANSPORTS" \
+            --arg status "$status" \
+            --arg tests "$it" \
+            --arg compression "$comp" \
+            --argjson duration "${{ steps.it.outputs.duration || 0 }}" \
+            '{scenario:$scenario, transport:$transport, status:$status,
+              tests:$tests, compression:$compression, duration:$duration}' \
+            > results.jsonl
+          cat results.jsonl
+
+      - name: Collect compose logs
+        if: failure()
+        run: docker compose -f "$COMPOSE_FILE" logs --no-color > compose-logs.txt 2>&1 || true
+
+      # Put the evidence in the job summary rather than in an artifact nobody
+      # downloads: with 63 jobs (soon ~140) the first question on a red run is
+      # always "which one, and why", and clicking through to a log to find out
+      # is the slowest possible answer.
+      - name: Surface the failure inline
+        if: failure()
+        run: |
+          {
+            echo "### ❌ \`${{ matrix.scenario }}\`"
+            echo
+            echo "tests: \`${{ steps.it.outcome }}\` · compression: \`${{ steps.compression.outcome }}\` · transport: \`$PUSH_TRANSPORTS\`"
+            echo
+            echo "<details><summary>failed assertions</summary>"
+            echo
+            echo '```'
+            grep -hA5 -E '^(Failures|Tests in error|\[ERROR\].*IT)' \
+              integration-tests/target/failsafe-reports/*.txt 2>/dev/null | head -60 || echo "(no failsafe report)"
+            echo '```'
+            echo
+            echo "</details>"
+            echo
+            echo "<details><summary>last 40 proxy/app log lines</summary>"
+            echo
+            echo '```'
+            tail -n 40 compose-logs.txt 2>/dev/null || echo "(no compose logs)"
+            echo '```'
+            echo
+            echo "</details>"
+            echo
+            echo "[⬇ full artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Always uploaded, but it is one small JSON line: the report job needs a
+      # row from every scenario, including the ones that passed.
+      - name: Upload result row
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ steps.id.outputs.id }}
+          path: results.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # The heavy evidence — reports, traces, logs — only when there is something
+      # to diagnose. Uploading it on every green run produced 63 artifacts a run
+      # for nothing.
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: failure-${{ steps.id.outputs.id }}
+          path: |
+            integration-tests/target/failsafe-reports/**
+            integration-tests/target/traces/**
+            compose-logs.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Tear down scenario stack
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v
+
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [prepare, test]
+    if: always() && needs.prepare.result == 'success'
+    steps:
+      - name: Download result rows
+        uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: results
+          merge-multiple: false
+
+      # The view that did not exist before: one table per proxy tree, sorted so
+      # failures come first, readable without opening a single job.
+      - name: Write summary
+        run: |
+          set -eu
+          find results -name results.jsonl -exec cat {} + > all.jsonl 2>/dev/null || : > all.jsonl
+          expected='${{ needs.prepare.outputs.count }}'
+          actual="$(wc -l < all.jsonl | tr -d ' ')"
+          {
+            echo "## Scenario results — \`${{ inputs.proxy && inputs.proxy || 'all proxies' }}\`"
+            echo
+            if [ "$actual" -eq 0 ]; then
+              echo "No results were reported. Every test job failed before it could record one."
+            else
+              jq -rs '
+                group_by(.scenario | split("/")[0:2] | join("/"))[]
+                | "### " + (.[0].scenario | split("/")[0:2] | join("/"))
+                  + " — " + ((map(select(.status == "pass")) | length) | tostring)
+                  + "/" + (length | tostring) + " passed\n\n"
+                  + "| scenario | transport | tests | compression | result | s |\n"
+                  + "|---|---|---|---|---|---:|\n"
+                  + (sort_by(.status, .scenario)
+                     | map("| `" + (.scenario | split("/")[2:] | join("/")) + "` | "
+                           + .transport + " | "
+                           + .tests + " | " + .compression + " | "
+                           + (if .status == "pass" then "✅" else "❌ **fail**" end) + " | "
+                           + (.duration | tostring) + " |")
+                     | join("\n"))
+                  + "\n"
+              ' all.jsonl
+            fi
+            if [ "$actual" -ne "$expected" ]; then
+              echo
+              echo "> ⚠️ $actual of $expected scenarios reported a result."
+              echo "> The rest were cancelled or died before recording one."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The report job is what the caller sees, so it has to carry the verdict:
+      # a missing row is a failure too, otherwise a cancelled or crashed job
+      # would quietly turn the run green.
+      - name: Fail if any scenario failed
+        run: |
+          set -eu
+          expected='${{ needs.prepare.outputs.count }}'
+          actual="$(wc -l < all.jsonl | tr -d ' ')"
+          failed="$(grep -c '"status":"fail"' all.jsonl || true)"
+          echo "$actual/$expected scenarios reported, $failed failed."
+          [ "$actual" -eq "$expected" ] || { echo "::error::$((expected - actual)) scenario(s) reported no result"; exit 1; }
+          [ "$failed" -eq 0 ] || { echo "::error::$failed scenario(s) failed"; exit 1; }
