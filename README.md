@@ -3,6 +3,7 @@
 [![Apache HTTPD](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml)
 [![NGINX](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml)
 [![Traefik](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml)
+[![HAProxy](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/haproxy.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/haproxy.yml)
 [![Lint](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml)
 
 A collection of quick and dirty configurations to test Vaadin application behind
@@ -47,6 +48,8 @@ The scenarios are replicated for the following reverse proxy configuration:
 * Traefik
 * Traefik over HTTPS (root-context and root-context-sse)
 * Traefik configured with Docker labels (root-context only)
+* HAProxy
+* HAProxy over HTTPS (root-context and root-context-sse)
 
 ```
 ├── apache-httpd
@@ -150,6 +153,40 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   └── root-context-sse
 │   └── labels
 │       └── root-context
+├── haproxy
+│   ├── haproxy-base.cfg (shared base, mounted as conf.d/00-base.cfg)
+│   ├── templates (config files shared by several scenarios)
+│   │   ├── add-prefix.cfg
+│   │   ├── passthrough.cfg
+│   │   ├── passthrough-sse.cfg
+│   │   ├── servlet-mapping.cfg
+│   │   └── strip-prefix.cfg
+│   ├── http
+│   │   ├── custom-context
+│   │   ├── custom-context-push-url
+│   │   ├── custom-context-sse
+│   │   ├── custom-to-root-context
+│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-servlet-mapping
+│   │   ├── custom-to-root-context-sse
+│   │   ├── load-balancer
+│   │   ├── load-balancer-cookie-prefix
+│   │   ├── load-balancer-sse
+│   │   ├── multiple-root-context
+│   │   ├── root-context
+│   │   ├── root-context-push-url
+│   │   ├── root-context-push-url-sse
+│   │   ├── root-context-sse
+│   │   ├── root-to-custom-context
+│   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-servlet-mapping
+│   │   ├── root-to-custom-context-sse
+│   │   ├── servlet-mapping
+│   │   ├── servlet-mapping-push-url
+│   │   └── servlet-mapping-sse
+│   └── https
+│       ├── root-context
+│       └── root-context-sse
 │
 └── my-app (VAADIN Application)
 ```
@@ -709,3 +746,142 @@ On an upgrade Traefik sends `X-Forwarded-Proto: wss` rather than `https`.
 Tomcat's `RemoteIpValve` only treats `https` as secure, so `request.isSecure()`
 is false for that request; PUSH works regardless, because the client builds the
 push URL from the page load, which does carry `https`.
+
+## HAProxy Notes
+
+HAProxy is here because it is the engine under OpenShift's router and
+`haproxy-ingress`, so it is where a lot of enterprise Vaadin deployments
+actually land — and because it is the only proxy in this repo with **no
+`<Location>` / `location` construct at all**. A frontend accepts every path and
+a backend carries every request it was given, which changes what a scenario
+even is here: several families collapse onto a single config file, and a
+published prefix has to be *enforced* rather than declared.
+
+Configuration is split the way Apache's is, but the mechanism is different
+because HAProxy has no `include` directive. Each scenario mounts two files into
+the same directory —
+
+```
+haproxy/haproxy-base.cfg   -> conf.d/00-base.cfg
+<the scenario's config>    -> conf.d/10-vaadin.cfg
+```
+
+— and the container runs `haproxy -f /usr/local/etc/haproxy/conf.d`, which
+concatenates the directory in lexical order. Base and scenario only parse as a
+pair. Pin the version with `HAPROXY_IMAGE`, the way `MY_APP_VERSION` pins the
+app:
+
+```
+HAPROXY_IMAGE=haproxy:3.1 docker compose up
+```
+
+### 24 scenarios, 16 config files
+
+Five files under [`haproxy/templates/`](./haproxy/templates) are mounted by
+more than one scenario, and that sharing is a finding rather than a convenience:
+
+| file | mounted by |
+|---|---|
+| `passthrough.cfg` | `root-context`, `root-context-push-url`, `custom-context`, `custom-context-push-url` |
+| `passthrough-sse.cfg` | `root-context-sse`, `root-context-push-url-sse`, `custom-context-sse` |
+| `strip-prefix.cfg` | `custom-to-root-context`, `custom-to-root-context-push-url` |
+| `add-prefix.cfg` | `root-to-custom-context`, `root-to-custom-context-push-url` |
+| `servlet-mapping.cfg` | `servlet-mapping`, `servlet-mapping-push-url` |
+
+A context path needs no rule because nothing here is scoped to a path, and a
+relocated PUSH endpoint needs none because an HTTP/1.1 upgrade is relayed on
+whichever path the client asks to upgrade. The Apache and NGINX siblings each
+carry a second block for `VAADIN_PUSH_URL` only because that is where
+`upgrade=websocket` / the `Upgrade` header lived. Note that `VAADIN_PUSH_URL`
+is resolved against the **context**, so under `custom-context` the browser asks
+for `/app/VAADIN/push`.
+
+### The `*-sse` scenarios deny the upgrade, they do not omit it
+
+Apache and NGINX refuse an upgrade by *omission*: `Upgrade` and `Connection`
+are hop-by-hop headers that neither forwards unless a directive puts them back,
+and the `*-sse` configs simply do not. HAProxy relays an upgrade with no
+configuration at all and has no keyword to switch that off, so the refusal is
+written out:
+
+```
+http-request deny deny_status 501 if { req.hdr(Upgrade) -m found }
+```
+
+The browser console shows the same thing either way
+(`Error during WebSocket handshake: Unexpected response code: 501`), but the
+501 comes from the proxy rather than from Atmosphere. Traefik has the same
+problem and solves it a third way, by deleting the client's `Upgrade` header.
+
+### Rewriting a response means raw regexes, and two of them bite
+
+There is no `ProxyPassReverse`, no `ProxyPassReverseCookiePath`, no
+`proxy_redirect` and no `proxy_cookie_path`. The prefix-translating scenarios
+put the public URL back with `http-response replace-header` over `Location` and
+`Set-Cookie`, which works — and has two traps that a config check cannot see:
+
+* **A literal space in a character class breaks the config parser** before the
+  regex engine ever sees it: `(.*;[ ]*[Pp]ath=)` is rejected with
+  `missing terminating ] for character class`. Write `\s`.
+* **Tomcat writes `Path=/app`, with no trailing slash.** A rule anchored on
+  `/app/` matches nothing, `replace-header` silently does nothing, and the
+  browser at `/` stops sending the session cookie back — every view then times
+  out. The rules in this tree are anchored on the *end* of the header value for
+  that reason.
+
+A rewrite that matches nothing looks exactly like a rewrite that was never
+needed, so both templates carry a comment saying so.
+
+### `http-request` rules run before `use_backend`
+
+This decides the shape of `multiple-root-context`, where two apps are published
+under `/ui1` and `/ui2`:
+
+* A prefix strip in the frontend would erase the prefix the routing ACL matches
+  on, and every request answers `503` with `vaadin-in/<NOSRV>` in the log. Each
+  backend therefore strips its own prefix, which a backend is allowed to do.
+* An unconditional `http-request deny` meant as "nothing outside the two
+  prefixes exists" denies the two prefixes as well, for the same reason. It has
+  to carry the condition.
+
+The same ordering rule is why the two `*-servlet-mapping` context translations
+list their rewrite rules in opposite orders — most specific first in one
+direction, general first in the other — with a comment in each explaining which
+and why.
+
+### Compression is an allowlist, and other things the base carries
+
+`compression type` names the types to compress, like NGINX's `gzip_types` and
+unlike Traefik's denylist, so `text/event-stream` (SSE push) and `text/plain`
+(streaming and long polling) stay out by simply not being named. A backslash
+does **not** continue a directive, so the list stays on one line.
+
+Two more things live in the shared base rather than in every scenario:
+
+* `timeout tunnel`, which no other proxy here has an equivalent for. Once a
+  connection has been upgraded it stops being a request, and this timeout
+  governs it in place of `timeout client`/`timeout server`. Vaadin's PUSH
+  heartbeat is every 60s so neither value is ever reached; they are written
+  down because HAProxy's own default is no timeout at all.
+* `X-Forwarded-Proto`, derived from the bind's TLS state with
+  `%[ssl_fc,iif(https,http)]`. That one expression is correct for every
+  scenario at once, which is why `haproxy/https/*` needs no header rule where
+  the Apache and NGINX siblings each set one by hand.
+
+### TLS reuses the existing fixture under a second name
+
+`bind ssl crt` takes a PEM that may carry the key, and when it does not it
+loads `<crt>.key` from beside it. So `haproxy/https/*` mounts
+`tls/localhost.key` as `localhost.crt.key` and no combined PEM has to be
+generated. The bind offers HTTP/2 through ALPN by default, as Traefik's TLS
+entryPoint does and unlike NGINX's `listen 443 ssl`; `curl` therefore needs
+`--http1.1` to express an upgrade by hand.
+
+### No AJP, and no `root-context-legacy`
+
+HAProxy speaks HTTP/1.x, HTTP/2, FastCGI and raw TCP. There is no AJP mux in
+the codebase and none has ever been proposed, so the 17 AJP scenarios have no
+counterpart here. `root-context-legacy` exists to contrast Apache's
+pre-2.4.47 `RewriteRule`-on-`Upgrade` idiom with `ProxyPass … upgrade=websocket`;
+HAProxy has only ever had one way to relay an upgrade, so the port would be a
+byte-identical copy of `root-context`.

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repo is **not** a deployable application. It is a collection of quick docker-compose
 scenarios that exercise a single Vaadin/Spring Boot test app (`my-app/`) sitting behind
 several reverse-proxy configurations (Apache HTTPD over HTTP and AJP, NGINX over HTTP,
-Traefik over HTTP).
+Traefik over HTTP, HAProxy over HTTP).
 The goal is to verify that Vaadin Flow + Hilla works correctly through each proxy
 configuration — context paths, custom servlet mappings, custom PUSH URLs, load balancing,
 multi-app routing. README.md is the canonical map of scenarios.
@@ -30,6 +30,15 @@ multi-app routing. README.md is the canonical map of scenarios.
   inlines the proxy config file, and a label-configured scenario has none.
   `traefik/labels/root-context` is the single exception, documenting the idiom, and the
   only compose file in the repo that mounts the Docker socket.
+- `haproxy/{http,https}/<scenario>/` — `docker-compose.yml` plus either a shared file from
+  `haproxy/templates/` or a scenario-local `vaadin.cfg`. HAProxy has no `include`
+  directive, so the split is done with mounts: the shared `haproxy/haproxy-base.cfg`
+  becomes `conf.d/00-base.cfg`, the scenario config becomes `conf.d/10-vaadin.cfg`, and
+  the container runs `haproxy -f /usr/local/etc/haproxy/conf.d`, which concatenates the
+  directory in lexical order. Base and scenario only parse as a pair. The base carries two
+  `defaults` sections because a named one holding `http-request` rules cannot be inherited
+  by frontends *and* backends; scenarios write `frontend … from vaadin-front` and
+  `backend … from vaadin`.
 - `integration-tests/` — standalone Maven module with a Playwright smoke suite
   (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`). Driven by `run-test.sh`
   against an already-running scenario; parameterized over the push transports named
@@ -95,7 +104,9 @@ Java code is the same image everywhere. Key knobs:
   AJP connector iff `tomcat.ajp.port` is set. `secretRequired=false` is forced when the secret
   is blank, otherwise the proxy must send a matching `secret=` on `ProxyPass`.
 - `TOMCAT_JVMROUTE` — `TomcatConfig.JvmRoute` sets the engine `jvmRoute` so the session id
-  gets a `.<route>` suffix; used by sticky-session load-balancer scenarios.
+  gets a `.<route>` suffix. Available, but **no scenario sets it**: every sticky-session
+  scenario has the proxy synthesize its own affinity cookie instead, and HAProxy's
+  `load-balancer-cookie-prefix` decorates `JSESSIONID` without reading Tomcat's suffix.
 - `APP_NAME` — title shown in `MainLayout`, used by load balancer scenarios to distinguish
   which backend served the request.
 
@@ -132,32 +143,44 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 - `servlet-mapping` — app at `/` but Vaadin servlet on `/ui/*`; Hilla resources stay on root
   (see comment in `apache-httpd/http/servlet-mapping/vaadin.conf` and Hilla issue #289).
 - `*-push-url` — same scenario but with `VAADIN_PUSH_URL` overridden, requiring an extra
-  WebSocket-only proxy block in the Apache and NGINX trees. Not in `traefik/`: every
-  router upgrades already, so each config there is identical to its sibling and the
-  identical config is the finding. Note the public path — `VAADIN_PUSH_URL` resolves
-  against the context, so under `custom-context` the browser asks for
-  `/app/VAADIN/push`, not `/VAADIN/push`.
-- `load-balancer` — two `vaadin-1` / `vaadin-2` backends, sticky sessions via `jvmRoute`
-  (Apache) or a synthesized `ROUTEID` cookie.
+  WebSocket-only proxy block in the Apache and NGINX trees. Not in `traefik/` or
+  `haproxy/`: both relay an upgrade on whatever path it arrives on, so each config there
+  is identical to its sibling and the identical config is the finding. In `haproxy/` the
+  scenario mounts the sibling's *file*, not a copy of it. Note the public path —
+  `VAADIN_PUSH_URL` resolves against the context, so under `custom-context` the browser
+  asks for `/app/VAADIN/push`, not `/VAADIN/push`.
+- `load-balancer` — two `vaadin-1` / `vaadin-2` backends, sticky sessions via a `ROUTEID`
+  cookie that the proxy synthesizes itself in every tree. `TOMCAT_JVMROUTE` exists in
+  `my-app` but no scenario currently sets it: Apache's balancer reads its own route id
+  rather than Tomcat's, so nothing needs the suffix.
+- `load-balancer-cookie-prefix` (HAProxy only) — the same two backends made sticky the
+  other way round, with `cookie JSESSIONID prefix`: the proxy prepends its server id to
+  Tomcat's session id on the way out (`JSESSIONID=v1~ABC123`) and strips it on the way
+  in. The only scenario in the repo where a proxy rewrites the session id itself, which
+  is why it earns a place beside `load-balancer`. `prefix` mode does **not** consume
+  `TOMCAT_JVMROUTE` — the two are independent mechanisms that merely compose.
 - `multiple-root-context*` — two independent apps mapped under different prefixes (no
-  `SERVER_SERVLET_CONTEXT_PATH` on the backend): NGINX rewrite rules, or `stripPrefix`
-  in `traefik/`. Distinct session cookie *names* are not enough there, because both apps
-  issue a `csrfToken` under the same name and Traefik cannot rescope it — each app is
-  told its public prefix instead.
+  `SERVER_SERVLET_CONTEXT_PATH` on the backend): NGINX rewrite rules, `stripPrefix`
+  in `traefik/`, or a per-backend `replace-path` in `haproxy/`. Distinct session cookie
+  *names* are not enough, because both apps issue a `csrfToken` under the same name:
+  Apache, NGINX and HAProxy rescope it by rewriting the `Set-Cookie` path, Traefik cannot
+  and tells each app its public prefix instead.
 - `*-sse` — same scenario but with PUSH over Server-Sent Events
   (`VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS`) through a proxy that cannot upgrade a
   connection. In the Apache and NGINX trees that is achieved by omission: no
   `upgrade=websocket`, no `ws://` worker, no `RewriteRule` on the `Upgrade` header.
-  Traefik has no such omission available — every router upgrades when the client asks —
-  so those scenarios **refuse** instead, with a `headers` middleware that deletes the
-  client's `Upgrade` and `Connection` headers. Same semantics, opposite mechanism; when
-  adding an `*-sse` scenario, check which of the two the tree calls for.
+  Traefik and HAProxy have no such omission available — both relay an upgrade with no
+  configuration at all — so those scenarios **refuse** instead: Traefik with a `headers`
+  middleware that deletes the client's `Upgrade` and `Connection` headers, HAProxy with
+  `http-request deny deny_status 501 if { req.hdr(Upgrade) -m found }`. Same semantics,
+  three mechanisms; when adding an `*-sse` scenario, check which one the tree calls for.
+  Where a tree refuses, the 501 comes from the proxy rather than from Atmosphere.
   The transport needs no special app image any more: the pom pins 25.3.0-rc1 and
   `my-app/src/main/resources/vaadin-featureflags.properties` enables
   `com.vaadin.experimental.ssePushTransport`, so the default build has it. CI still gates
   these behind the `include_sse` workflow input. Selecting a WebSocket transport in one
-  of them fails with a 501 from Atmosphere — that is the point of the scenario, not a
-  bug, and it was verified through the middleware as well as through omission.
+  of them fails with a 501 — that is the point of the scenario, not a bug, and it was
+  verified through all three mechanisms.
   Hilla `Flux` endpoints cannot work in these either: Hilla push is WebSocket-only
   (`FluxConnection` sets transport and fallbackTransport both to `websocket`), so
   the ITs skip those assertions via `-Dit.websocket=false`.
@@ -168,15 +191,15 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 - `root-context-legacy` (Apache HTTP only) — kept for comparison with older config style.
 
 When adding a new scenario, mirror an existing sibling: a `docker-compose.yml` that mounts
-the shared `httpd.conf` (Apache), a template (NGINX) or the shared `traefik.yml`
-(Traefik), plus the proxy-specific config file.
+the shared `httpd.conf` (Apache), a template (NGINX), the shared `traefik.yml`
+(Traefik) or the shared `haproxy-base.cfg` (HAProxy), plus the proxy-specific config file.
 Then add a row to `scenarios.tsv` and run `scripts/gen-readmes.sh` — the catalogue drives the
 CI matrix, the per-scenario READMEs and `run-scenario.sh`'s picker, and a scenario missing
 from it simply never runs. `scripts/check-catalog.sh` enforces both directions and runs in CI.
 Reference the proxy image as `${HTTPD_IMAGE:-httpd:2.4.68}` / `${NGINX_IMAGE:-nginx:1.31.6}`
-/ `traefik:${TRAEFIK_VERSION:-v3.7}` rather than a bare tag, and keep
-`.github/proxy-images.txt` in step. For Traefik that tag is a floor as well as a pin:
-`compress` stalled `text/event-stream` outright before 3.3.5.
+/ `traefik:${TRAEFIK_VERSION:-v3.7}` / `${HAPROXY_IMAGE:-haproxy:3.2.23}` rather than a
+bare tag, and keep `.github/proxy-images.txt` in step. For Traefik that tag is a floor as
+well as a pin: `compress` stalled `text/event-stream` outright before 3.3.5.
 
 ## Continuous integration
 
@@ -276,3 +299,34 @@ full-matrix sweep and `lint.yml`. A new proxy tree needs a new caller, not a cha
   `zone application_balancer 64k;` — keep it when copying one. The same startup race arms
   Apache's balancer (`retry`, 60s by default), so CI waits for every published backend port
   to accept a connection before any request reaches the proxy.
+- HAProxy has no `<Location>` / `location` construct: a frontend accepts every path and a
+  backend carries every request it was given. A published prefix therefore has to be
+  enforced (`http-request deny deny_status 404 unless is_app`), not declared, and four
+  families of scenario collapse onto a single shared file under `haproxy/templates/` —
+  including the whole `*-push-url` family, which mounts its sibling's file verbatim.
+- HAProxy's `http-request` ruleset runs **before** `use_backend`. A `replace-path` in the
+  frontend therefore erases the prefix the routing ACL matches on (`multiple-root-context`
+  answers 503 `vaadin-in/<NOSRV>` that way), and an unconditional `http-request deny`
+  denies the very paths the `use_backend` rules were meant to accept. Put the prefix strip
+  in the backend and give the deny a condition. The same ordering rule is why the two
+  `*-servlet-mapping` translations list their rewrites in opposite orders: specific first
+  where the prefix is stripped, general first where it is added.
+- Rewriting a response in `haproxy/` means raw `http-response replace-header` regexes over
+  `Location` and `Set-Cookie`; there is no `proxy_cookie_path` equivalent. Two traps, both
+  invisible to `haproxy -c`: a literal space in a character class is split by the config
+  tokenizer before the regex engine sees it (`[ ]` → `missing terminating ]`; write `\s`),
+  and Tomcat writes `Path=/app` with **no trailing slash**, so a rule anchored on `/app/`
+  matches nothing and the browser silently stops sending the session cookie. Anchor on the
+  end of the header value.
+- A backslash does not continue a directive in a HAProxy config — the next line is parsed
+  as a new keyword — so `compression type` and friends stay on one line. That list is an
+  allowlist like NGINX's `gzip_types`, so the streamed types stay out by not being named.
+- `haproxy/haproxy-base.cfg` carries `timeout tunnel`, which no other tree has an
+  equivalent for: after an upgrade the connection stops being a request and that timeout
+  governs it instead of `timeout client`/`timeout server`. It also sets
+  `X-Forwarded-Proto` from `%[ssl_fc,iif(https,http)]`, which is correct for every
+  scenario at once and is why `haproxy/https/*` needs no header rule of its own.
+- `bind ssl crt <file>` loads the key from `<file>.key` when the PEM does not carry one,
+  so `haproxy/https/*` mounts the repo's `tls/localhost.key` as `localhost.crt.key` and
+  no combined PEM is generated. That bind offers HTTP/2 through ALPN by default, with the
+  same `curl --http1.1` caveat as Traefik's.

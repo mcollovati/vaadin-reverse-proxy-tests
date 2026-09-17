@@ -1,0 +1,35 @@
+services:
+  vaadin1:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    environment:
+      - APP_NAME=My App One
+      # Distinct session cookie names so the two apps do not overwrite each
+      # other's session in a browser that visits both. The csrfToken cookie has
+      # the same name in both apps and cannot be renamed — that one is kept
+      # apart by the proxy rescoping its Path, see vaadin.cfg.
+      - SERVER_SERVLET_SESSION_COOKIE_NAME=JSIDONE
+    ports:
+      - "8080:8080"
+  vaadin2:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    environment:
+      - APP_NAME=The other app
+      - SERVER_SERVLET_SESSION_COOKIE_NAME=JSIDTWO
+    ports:
+      - "7080:8080"
+  web:
+    depends_on:
+      - vaadin1
+      - vaadin2
+    image: "${HAPROXY_IMAGE:-haproxy:3.2.23}"
+    # The image entrypoint prepends `haproxy -W -db` to an argument list that
+    # starts with a dash. Pointing -f at a directory is what lets the shared
+    # base and the scenario config be two mounts: HAProxy concatenates them.
+    command: ["-f", "/usr/local/etc/haproxy/conf.d"]
+    volumes:
+      - ../../haproxy-base.cfg:/usr/local/etc/haproxy/conf.d/00-base.cfg:ro
+      - ./vaadin.cfg:/usr/local/etc/haproxy/conf.d/10-vaadin.cfg:ro
+    ports:
+      - "9090:80"

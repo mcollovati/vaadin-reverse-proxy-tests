@@ -2,7 +2,8 @@
 # Interactive launcher for reverse-proxy scenarios.
 #
 # Walks the user through a small wizard:
-#   1. pick a reverse proxy (apache-httpd/{http,ajp,https,ajp-https}, nginx/{http,https})
+#   1. pick a reverse proxy (apache-httpd/{http,ajp,https,ajp-https},
+#      nginx/{http,https}, traefik/{http,https,labels}, haproxy/{http,https})
 #   2. pick a scenario inside it (fuzzy filter; Esc returns to step 1)
 #   3. action menu: Run (with/without logs), Docs (README), Back, Cancel
 #
@@ -124,6 +125,8 @@ else
                         "traefik/http" \
                         "traefik/https" \
                         "traefik/labels" \
+                        "haproxy/http" \
+                        "haproxy/https" \
                         | gum filter \
                             --header "Reverse proxy (type to filter, Esc to quit):" \
                             --placeholder "Filter proxies…"); then

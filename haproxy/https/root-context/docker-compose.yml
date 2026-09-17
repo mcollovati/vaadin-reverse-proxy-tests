@@ -1,0 +1,28 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Honor X-Forwarded-Proto: https from the proxy so Vaadin advertises
+      # wss:// for PUSH and absolute URLs are built with the public scheme.
+      SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
+  web:
+    depends_on:
+      - vaadin
+    image: "${HAPROXY_IMAGE:-haproxy:3.2.23}"
+    # The image entrypoint prepends `haproxy -W -db` to an argument list that
+    # starts with a dash. Pointing -f at a directory is what lets the shared
+    # base and the scenario config be two mounts: HAProxy concatenates them.
+    command: ["-f", "/usr/local/etc/haproxy/conf.d"]
+    volumes:
+      - ../../haproxy-base.cfg:/usr/local/etc/haproxy/conf.d/00-base.cfg:ro
+      - ./vaadin.cfg:/usr/local/etc/haproxy/conf.d/10-vaadin.cfg:ro
+      - ../../../tls/localhost.crt:/usr/local/etc/haproxy/tls/localhost.crt:ro
+      # `bind ssl crt` takes a PEM that may carry the key; when it does not, it
+      # loads <crt>.key from beside it. That is why the existing fixture works
+      # here unchanged, under a second name, with no combined PEM to generate.
+      - ../../../tls/localhost.key:/usr/local/etc/haproxy/tls/localhost.crt.key:ro
+    ports:
+      - "9443:443"
