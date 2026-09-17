@@ -1,5 +1,6 @@
 package com.vaadin.reverseproxy.it;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
@@ -10,12 +11,18 @@ import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.Tracing;
 import com.microsoft.playwright.options.AriaRole;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.extension.AfterTestExecutionCallback;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
 
+@ExtendWith(BaseIT.RecordFailure.class)
 public abstract class BaseIT {
 
     private static Playwright playwright;
@@ -23,6 +30,8 @@ public abstract class BaseIT {
 
     protected BrowserContext context;
     protected Page page;
+
+    private boolean failed;
 
     @BeforeAll
     static void launchBrowser() {
@@ -51,6 +60,12 @@ public abstract class BaseIT {
             options.setIgnoreHTTPSErrors(true);
         }
         context = browser.newContext(options);
+        // Tracing runs for every test but is only written out for the ones that
+        // fail (see closeContext). For a UI test through a proxy a trace is the
+        // difference between a two-minute and a two-hour diagnosis, and a full
+        // matrix run would otherwise produce hundreds of traces of nothing.
+        context.tracing().start(new Tracing.StartOptions().setScreenshots(true)
+                .setSnapshots(true).setSources(true));
         page = context.newPage();
         // Runs before any application script, so it catches the push
         // connection Atmosphere opens during the initial page load.
@@ -69,9 +84,42 @@ public abstract class BaseIT {
     }
 
     @AfterEach
-    void closeContext() {
+    void closeContext(TestInfo info) {
         if (context != null) {
+            Tracing.StopOptions stop = new Tracing.StopOptions();
+            if (failed) {
+                stop.setPath(tracePath(info));
+            }
+            context.tracing().stop(stop);
             context.close();
+        }
+    }
+
+    /**
+     * Where a failing test's trace is written. CI uploads
+     * {@code integration-tests/target/traces/**} as a failure artifact; open one
+     * with {@code npx playwright show-trace <file>}.
+     */
+    private Path tracePath(TestInfo info) {
+        String cls = info.getTestClass().map(Class::getSimpleName)
+                .orElse("unknown");
+        String name = info.getDisplayName().replaceAll("\\W+", "_");
+        return Path.of("target", "traces", cls + "-" + name + ".zip");
+    }
+
+    /**
+     * Marks the test instance as failed so that
+     * {@link #closeContext(TestInfo)} keeps its trace. This callback runs after
+     * the test method but before {@code @AfterEach}, which is the only point
+     * where the outcome is known and the browser context is still open.
+     */
+    static class RecordFailure implements AfterTestExecutionCallback {
+        @Override
+        public void afterTestExecution(ExtensionContext context) {
+            if (context.getExecutionException().isPresent()
+                    && context.getRequiredTestInstance() instanceof BaseIT it) {
+                it.failed = true;
+            }
         }
     }
 
