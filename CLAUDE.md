@@ -144,6 +144,37 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 
 When adding a new scenario, mirror an existing sibling: a `docker-compose.yml` that mounts
 the shared `httpd.conf` (Apache) or a template (NGINX), plus the proxy-specific config file.
+Then add a row to `scenarios.tsv` and run `scripts/gen-readmes.sh` — the catalogue drives the
+CI matrix, the per-scenario READMEs and `run-scenario.sh`'s picker, and a scenario missing
+from it simply never runs. `scripts/check-catalog.sh` enforces both directions and runs in CI.
+Reference the proxy image as `${HTTPD_IMAGE:-httpd:2.4.68}` / `${NGINX_IMAGE:-nginx:1.31.6}`
+rather than a bare tag, and keep `.github/proxy-images.txt` in step.
+
+## Continuous integration
+
+`.github/workflows/_scenarios.yml` holds every step (matrix generation, image build,
+readiness waits, tests, summary) and is called by thin per-proxy workflows — `apache.yml`,
+`nginx.yml` — that carry only triggers and path filters, plus `all.yml` for a manual
+full-matrix sweep and `lint.yml`. A new proxy tree needs a new caller, not a change to
+`_scenarios.yml`.
+
+- Proxy images are pinned and shipped to the test jobs inside the same tarball as the app
+  image, so no job pulls from Docker Hub. An unpinned proxy makes a red run ambiguous —
+  Vaadin regression, or an Apache upgrade? — which defeats the purpose of the repo.
+- `scripts/check-compression.sh` runs **after** the integration tests and with
+  `if: always()`, never before them. As a gate in front it could skip the whole suite:
+  runs 35136594973 and 35138856877 were 63/63 jobs red with not one test executed.
+- Backend containers are identified in the readiness wait by their image
+  (`vaadin/my-app`), not by a `vaadin*` service name. A new tree that names its app service
+  something else would otherwise get a wait step that silently succeeds without waiting.
+- Each job writes one `results.jsonl` row; the `report` job aggregates them into a
+  per-proxy table in the run summary and fails if any row is missing, so a cancelled or
+  crashed job cannot turn a run green.
+- Third-party actions are pinned to a commit SHA with the version in a trailing comment
+  (`uses: actions/checkout@d23441a… # v6.1.0`); Dependabot updates both. `lint.yml`
+  rejects any `uses:` that is not a 40-character SHA, local `./.github/workflows/…` refs
+  excepted. The actionlint installer is pinned the same way — fetched from a tag, not
+  `main`, and told which version to download.
 
 ## Caveats picked up from existing configs
 

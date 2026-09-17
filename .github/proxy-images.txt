@@ -1,0 +1,17 @@
+# Proxy images used by the scenarios, pinned so that a red run is unambiguous:
+# with httpd:latest / nginx:latest a failure could be a Vaadin regression or a
+# proxy upgrade, and there is no way to tell them apart after the fact.
+#
+# The CI build job pulls these once and ships them in the same tarball as the
+# app image, so no scenario job ever touches Docker Hub. Anonymous pulls are
+# rate-limited per source IP and GitHub-hosted runners share egress, so at
+# 140 jobs per run that was a live flake source as well as a cost.
+#
+# Compose files reference them as ${HTTPD_IMAGE:-...} / ${NGINX_IMAGE:-...},
+# so a one-off sweep against a different proxy build needs no file edits:
+#   HTTPD_IMAGE=httpd:2.4.67 docker compose up
+#
+# Keep in sync with the defaults in the compose files. Dependabot's
+# docker-compose ecosystem bumps those; this list has to follow.
+httpd:2.4.68
+nginx:1.31.6

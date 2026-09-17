@@ -99,7 +99,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-> "$tmp_images"
+: > "$tmp_images"
 while read -r scenario; do
     sed -nE 's/^[[:space:]]*image:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' \
         "$scenario/docker-compose.yml" >> "$tmp_images"
@@ -108,7 +108,17 @@ done < <(echo "$matrix" | jq -r '.[].scenario')
 missing_app=()
 missing_pull=()
 while read -r img; do
-    img="${img//\$\{MY_APP_VERSION:-latest\}/$app_version}"
+    # Compose files reference images through ${VAR:-default} so that a single
+    # run can be swept against another build (MY_APP_VERSION for the app,
+    # HTTPD_IMAGE / NGINX_IMAGE for the proxies). Resolve them the way compose
+    # would: the environment when it carries a non-empty value, else the
+    # default. Without this the pre-flight looks for an image literally named
+    # "${HTTPD_IMAGE:-httpd:2.4.68}" and reports every scenario as missing.
+    while [[ $img =~ \$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)\} ]]; do
+        var_name="${BASH_REMATCH[1]}"
+        var_default="${BASH_REMATCH[2]}"
+        img="${img//"${BASH_REMATCH[0]}"/${!var_name:-$var_default}}"
+    done
     docker image inspect "$img" >/dev/null 2>&1 && continue
     case "$img" in
         vaadin/my-app:*) missing_app+=("$img") ;;

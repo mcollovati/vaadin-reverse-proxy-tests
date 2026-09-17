@@ -1,0 +1,106 @@
+name: Lint
+
+# Nothing used to check the ~900 lines of bash CI depends on, or that
+# scenarios.tsv still matches what is on disk. A scenario missing from the
+# catalogue is a scenario that silently never runs.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: actionlint
+        env:
+          # Both the installer and the binary it fetches are pinned. Piping a
+          # script from a moving branch into bash is looser than anything the
+          # SHA-pinned actions above allow.
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          set -eu
+          curl -fsSL -o download-actionlint.bash \
+            "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash"
+          bash download-actionlint.bash "$ACTIONLINT_VERSION"
+          ./actionlint -color
+
+      - name: shellcheck
+        run: |
+          set -eu
+          # -x follows sourced files; -S warning keeps style nits out of CI.
+          shellcheck -x -S warning run-all.sh run-scenario.sh run-test.sh scripts/*.sh
+
+      - name: hadolint
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: my-app/Dockerfile
+
+      - name: Actions are pinned to a commit SHA
+        run: |
+          set -eu
+          # A tag can be moved to point at different code without anything
+          # landing in this repo, so third-party actions are pinned by SHA with
+          # the version in a trailing comment. Dependabot updates both.
+          # Local reusable workflows (./.github/workflows/...) are exempt: they
+          # are this repository, at this commit.
+          unpinned="$(grep -rhoE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*[^[:space:]]+' .github/workflows \
+            | sed -E 's/.*uses:[[:space:]]*//' \
+            | grep -v '^\./' \
+            | grep -vE '@[0-9a-f]{40}$' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "::error::these actions are not pinned to a commit SHA:"
+            echo "$unpinned"
+            exit 1
+          fi
+          echo "All external actions are SHA-pinned."
+
+      - name: Catalogue is in sync with the tree
+        run: scripts/check-catalog.sh
+
+      - name: Generated READMEs are up to date
+        run: |
+          set -eu
+          scripts/gen-readmes.sh >/dev/null
+          git diff --exit-code -- '*/README.md' \
+            || { echo "::error::scenarios.tsv and the generated READMEs disagree; run scripts/gen-readmes.sh and commit the result"; exit 1; }
+
+      - name: Playwright version is consistent
+        run: |
+          set -eu
+          # The workflow installs Chromium's system libraries through Playwright's
+          # npm CLI and so carries a second copy of the version. A Dependabot bump
+          # to the pom would otherwise desynchronise them silently.
+          pom=$(sed -nE 's|.*<playwright.version>(.*)</playwright.version>.*|\1|p' integration-tests/pom.xml)
+          [ -n "$pom" ] || { echo "::error::no <playwright.version> in integration-tests/pom.xml"; exit 1; }
+          grep -q "playwright@$pom" .github/workflows/_scenarios.yml \
+            || { echo "::error::_scenarios.yml pins a different Playwright than the pom's $pom"; exit 1; }
+
+      - name: Proxy images are pinned
+        run: |
+          set -eu
+          # An unpinned proxy image makes a red run ambiguous: Vaadin regression,
+          # or an Apache upgrade? Compose files must reference a pinned default.
+          # Only existing trees are scanned, so grep cannot exit 2 on a missing
+          # directory and report "clean" while a real match went unseen.
+          trees=()
+          for t in apache-httpd nginx haproxy traefik; do
+            [ -d "$t" ] && trees+=("$t")
+          done
+          if grep -rn --include=docker-compose.yml -E \
+               'image:[[:space:]]*"?(httpd|nginx|haproxy|traefik)(:latest)?"?[[:space:]]*$' \
+               "${trees[@]}"; then
+            echo "::error::the compose files above use an unpinned proxy image"
+            exit 1
+          fi

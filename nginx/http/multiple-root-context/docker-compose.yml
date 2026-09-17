@@ -20,7 +20,7 @@ services:
     depends_on:
       - vaadin1
       - vaadin2
-    image: nginx
+    image: "${NGINX_IMAGE:-nginx:1.31.6}"
     volumes:
       - ./default.conf.template:/etc/nginx/templates/default.conf.template
     ports:

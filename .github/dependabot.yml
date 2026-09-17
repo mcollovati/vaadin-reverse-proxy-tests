@@ -4,3 +4,50 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      # One PR for the lot. Action bumps are never individually interesting here.
+      actions:
+        patterns: ["*"]
+
+  # A Vaadin bump is not a chore in this repo, it is the thing under test: the
+  # whole point is finding out whether a new version still works behind each
+  # proxy. Never auto-merge these; let the per-proxy workflows report on them.
+  - package-ecosystem: "maven"
+    directory: "/my-app"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "maven"
+    directory: "/integration-tests"
+    schedule:
+      interval: "weekly"
+    groups:
+      test-tooling:
+        patterns:
+          - "org.junit*"
+          - "org.apache.maven.plugins*"
+    # Note: a Playwright bump here also has to be reflected in
+    # .github/workflows/_scenarios.yml, which installs the browser's system
+    # libraries through Playwright's npm CLI. lint.yml fails if they disagree.
+
+  # The my-app build and runtime base images.
+  - package-ecosystem: "docker"
+    directory: "/my-app"
+    schedule:
+      interval: "weekly"
+
+  # The proxy images themselves, now that the compose files pin them. A proxy
+  # upgrade arriving as a reviewable PR — rather than silently, through
+  # httpd:latest — is what makes a red run attributable.
+  - package-ecosystem: "docker-compose"
+    directories:
+      - "/apache-httpd/**"
+      - "/nginx/**"
+    schedule:
+      interval: "weekly"
+    groups:
+      proxies:
+        patterns:
+          - "httpd"
+          - "nginx"

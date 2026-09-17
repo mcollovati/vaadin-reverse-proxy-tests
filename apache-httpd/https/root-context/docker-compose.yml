@@ -11,7 +11,7 @@ services:
   https:
     depends_on:
       - vaadin
-    image: "httpd:latest"
+    image: "${HTTPD_IMAGE:-httpd:2.4.68}"
     ports:
       - "9443:443"
     volumes:
