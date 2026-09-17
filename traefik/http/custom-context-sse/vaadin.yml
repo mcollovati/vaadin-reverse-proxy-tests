@@ -1,0 +1,42 @@
+# App on the /app context, proxy preserves the same path, PUSH over
+# Server-Sent Events through a proxy that cannot upgrade a connection.
+#
+# The no-websocket middleware is what makes it "cannot": Traefik has no way to
+# omit upgrade support, so the client's Upgrade and Connection headers are
+# stripped before the request reaches the backend. Atmosphere then answers 501
+# to a WebSocket transport, which is the point of the scenario.
+http:
+  routers:
+    vaadin:
+      # Two clauses, not a bare PathPrefix(`/app`). Traefik's PathPrefix is a
+      # raw string prefix, so the bare form also matches /application. Every
+      # context-prefix rule in this tree is written this way.
+      rule: PathPrefix(`/app/`) || Path(`/app`)
+      entryPoints:
+        - web
+      middlewares:
+        - no-websocket
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    # Traefik upgrades on every route, so the only way to build a proxy that
+    # cannot is to remove the client.s upgrade intent. An empty value deletes
+    # the header rather than setting it empty.
+    no-websocket:
+      headers:
+        customRequestHeaders:
+          Upgrade: ""
+          Connection: ""
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

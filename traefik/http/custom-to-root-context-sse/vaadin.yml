@@ -1,0 +1,50 @@
+# Proxy at /app/, app at root /, PUSH over Server-Sent Events through a proxy
+# that cannot upgrade a connection.
+#
+# stripPrefix carries the event stream and the client-to-server XHR POSTs
+# alike. The /test-redirect breakage of the non-SSE sibling is unchanged and
+# still deliberate: nothing about the push transport gives Traefik the ability
+# to rewrite a response.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/app/`) || Path(`/app`)
+      entryPoints:
+        - web
+      middlewares:
+        - no-websocket
+        - strip-app
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    # stripPrefix also records what it removed in X-Forwarded-Prefix. Nothing
+    # here reads it: the backend's default forward-headers strategy ignores it,
+    # which is exactly what makes the redirect above wrong. On the exact path
+    # /app the backend receives / rather than an empty path, so no redirect
+    # rule is needed to add a trailing slash.
+    # Traefik upgrades on every route, so the only way to build a proxy that
+    # cannot is to remove the client's upgrade intent. An empty value deletes
+    # the header rather than setting it empty.
+    no-websocket:
+      headers:
+        customRequestHeaders:
+          Upgrade: ""
+          Connection: ""
+
+    strip-app:
+      stripPrefix:
+        prefixes:
+          - "/app"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

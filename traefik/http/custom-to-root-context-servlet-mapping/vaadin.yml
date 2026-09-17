@@ -1,0 +1,71 @@
+# Proxy at /app/ui/, app at root / with the Vaadin servlet on /ui/*. Two
+# translations at once: the public /app prefix has to come off, and Hilla's
+# resources have to come out from under the servlet mapping.
+#
+# /HILLA/* and /connect/* live at the backend's context root whatever
+# vaadin.url-mapping says, while the browser asks for them beneath /app/ui, so
+# those two paths lose both segments (vaadin/hilla#289). Everything else only
+# loses /app: /app/ui/* stays /ui/* for the Vaadin servlet, including
+# /ui/VAADIN/push, and the root-level resources — /VAADIN/*, /sw.js,
+# /styles.css, /manifest.webmanifest, /icons/*, /images/* — keep their place.
+#
+# As in custom-to-root-context, nothing puts the /app prefix back into a
+# response: /app/test-redirect answers a Location without it. The cookies
+# survive because the backend scopes them to / and a browser at /app/ui/ sends
+# cookies set on a parent path.
+http:
+  routers:
+    hilla-push:
+      rule: PathPrefix(`/app/ui/HILLA/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-app-ui
+        - compress
+      service: vaadin
+
+    hilla-connect:
+      rule: PathPrefix(`/app/ui/connect/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-app-ui
+        - compress
+      service: vaadin
+
+    root:
+      rule: PathPrefix(`/app/`) || Path(`/app`)
+      entryPoints:
+        - web
+      priority: 1
+      middlewares:
+        - strip-app
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    # Both segments, in one middleware: a prefix list is a set of alternatives,
+    # not a chain, so "/app/ui" has to be named as one string.
+    strip-app-ui:
+      stripPrefix:
+        prefixes:
+          - "/app/ui"
+
+    strip-app:
+      stripPrefix:
+        prefixes:
+          - "/app"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

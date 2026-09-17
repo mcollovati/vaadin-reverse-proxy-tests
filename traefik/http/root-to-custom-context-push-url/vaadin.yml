@@ -1,0 +1,50 @@
+# root-to-custom-context with VAADIN_PUSH_URL=/VAADIN/push.
+#
+# Identical to root-to-custom-context/vaadin.yml. The NGINX sibling needs a
+# second location for the relocated endpoint, purely to attach the Upgrade
+# headers; here the catch-all adds the /app prefix to the push path along with
+# everything else, and the upgrade needs no arranging.
+#
+# This is the direction that costs the most behind a proxy which cannot touch a
+# response. Two things have to be arranged, and both are in the compose file
+# rather than here: the session cookie path, and the forwarded prefix that
+# makes the backend stop building URLs with /app in them.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      middlewares:
+        - add-app
+        - forwarded-root
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    add-app:
+      addPrefix:
+        prefix: /app
+
+    # addPrefix does not emit X-Forwarded-Prefix — only stripPrefix does — so
+    # it is set by hand here. The backend's context path is /app but its public
+    # prefix is the root, and this is the only way to say so. Spring trims the
+    # trailing slash, so getContextPath() ends up empty.
+    #
+    # "/" and not "": an empty value would REMOVE the header instead.
+    forwarded-root:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Prefix: "/"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

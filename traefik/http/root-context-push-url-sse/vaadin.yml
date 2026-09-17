@@ -1,0 +1,39 @@
+# root-context-sse with VAADIN_PUSH_URL=/VAADIN/push.
+#
+# Identical to root-context-sse/vaadin.yml. Over SSE the relocated endpoint
+# needs no rule of its own in any of the three trees, because there is no
+# upgrade to arrange — it is an ordinary streamed GET plus XHR POSTs, and the
+# catch-all carries both. What makes this scenario worth keeping is the
+# combination: a relocated endpoint that must still be refused an upgrade.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      middlewares:
+        - no-websocket
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    # An empty value removes the header rather than setting it empty.
+    no-websocket:
+      headers:
+        customRequestHeaders:
+          Upgrade: ""
+          Connection: ""
+
+    # See root-context/vaadin.yml: this denylist is what keeps the event stream
+    # out of the compressor, and it is load-bearing for every *-sse scenario.
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

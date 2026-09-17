@@ -1,0 +1,56 @@
+# Proxy at /, app on the /app context, PUSH over Server-Sent Events through a
+# proxy that cannot upgrade a connection.
+#
+# Everything root-to-custom-context has to arrange applies here too — the
+# session cookie path and the forwarded prefix, both in the compose file — and
+# the event stream rides the same prefix-adding router as everything else. So
+# do the client-to-server XHR POSTs, which go to the same path.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      middlewares:
+        - no-websocket
+        - add-app
+        - forwarded-root
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    # Traefik upgrades on every route, so the only way to build a proxy that
+    # cannot is to remove the client's upgrade intent. An empty value deletes
+    # the header rather than setting it empty.
+    no-websocket:
+      headers:
+        customRequestHeaders:
+          Upgrade: ""
+          Connection: ""
+
+    add-app:
+      addPrefix:
+        prefix: /app
+
+    # addPrefix does not emit X-Forwarded-Prefix — only stripPrefix does — so
+    # it is set by hand here. The backend's context path is /app but its public
+    # prefix is the root, and this is the only way to say so. Spring trims the
+    # trailing slash, so getContextPath() ends up empty.
+    #
+    # "/" and not "": an empty value would REMOVE the header instead.
+    forwarded-root:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Prefix: "/"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

@@ -1,0 +1,51 @@
+# App at /, Traefik terminates TLS on https://localhost:9443/ and forwards over
+# plain HTTP, PUSH over Server-Sent Events through a proxy that cannot upgrade.
+#
+# The backend runs SERVER_FORWARD_HEADERS_STRATEGY=NATIVE so that the push URL
+# is built with the https scheme and the browser does not block the event
+# stream as mixed content. Traefik derives X-Forwarded-Proto from the
+# entryPoint's TLS state, so — unlike the Apache and NGINX siblings — no header
+# rule is needed to make that work.
+#
+# The wss-on-upgrade note in https/root-context/vaadin.yml does not apply:
+# there is no upgrade here, by construction.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - websecure
+      tls: {}
+      middlewares:
+        - no-websocket
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    # Traefik upgrades on every route, so the only way to build a proxy that
+    # cannot is to remove the client.s upgrade intent. An empty value deletes
+    # the header rather than setting it empty.
+    no-websocket:
+      headers:
+        customRequestHeaders:
+          Upgrade: ""
+          Connection: ""
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain
+
+# Certificates are dynamic configuration, so they live here rather than in the
+# shared traefik.yml, which stays scenario-agnostic.
+tls:
+  certificates:
+    - certFile: /etc/traefik/tls/localhost.crt
+      keyFile: /etc/traefik/tls/localhost.key

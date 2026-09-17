@@ -1,0 +1,31 @@
+# custom-context with VAADIN_PUSH_URL=/VAADIN/push.
+#
+# Identical to custom-context/vaadin.yml. The relocated push URL is resolved
+# against the context, so the browser asks for /app/VAADIN/push and the router
+# below already covers it; and Traefik needs no upgrade rule in the first
+# place. The Apache and NGINX siblings each add a block for this endpoint.
+http:
+  routers:
+    vaadin:
+      # Two clauses, not a bare PathPrefix(`/app`). Traefik's PathPrefix is a
+      # raw string prefix, so the bare form also matches /application. Every
+      # context-prefix rule in this tree is written this way.
+      rule: PathPrefix(`/app/`) || Path(`/app`)
+      entryPoints:
+        - web
+      middlewares:
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain
