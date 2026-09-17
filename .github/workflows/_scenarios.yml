@@ -184,7 +184,7 @@ jobs:
       # Playwright's npm CLI, which handles sudo. Keep the version in sync with
       # integration-tests/pom.xml's playwright.version — lint.yml enforces it.
       - name: Install Playwright system dependencies
-        run: npx --yes playwright@1.50.0 install-deps chromium
+        run: npx --yes playwright@1.62.0 install-deps chromium
 
       - name: Install Playwright browser
         working-directory: integration-tests
