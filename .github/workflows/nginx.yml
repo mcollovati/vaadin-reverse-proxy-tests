@@ -1,6 +1,6 @@
 name: NGINX
 
-# Thin caller: decides when the Apache tree runs. All the logic is in
+# Thin caller: decides when the NGINX tree runs. All the logic is in
 # _scenarios.yml. Path filters are the point of splitting per proxy — a PR that
 # only touches apache-httpd/ has no reason to spin up 23 NGINX jobs.
 
