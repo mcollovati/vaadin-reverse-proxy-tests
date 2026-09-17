@@ -16,3 +16,4 @@
 httpd:2.4.68
 nginx:1.31.6
 traefik:v3.7
+haproxy:3.2.23

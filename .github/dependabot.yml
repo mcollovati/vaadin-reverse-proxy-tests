@@ -44,6 +44,8 @@ updates:
     directories:
       - "/apache-httpd/**"
       - "/nginx/**"
+      - "/traefik/**"
+      - "/haproxy/**"
     schedule:
       interval: "weekly"
     groups:
@@ -51,3 +53,5 @@ updates:
         patterns:
           - "httpd"
           - "nginx"
+          - "traefik"
+          - "haproxy"

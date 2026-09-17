@@ -8,6 +8,9 @@
 #   - Traefik scenarios inline the scenario's vaadin.yml (its dynamic config) and
 #     link the shared traefik.yml. The one label-based scenario has no config
 #     file, so it says so instead.
+#   - HAProxy scenarios inline whatever the docker-compose.yml mounts as
+#     conf.d/10-vaadin.cfg (shared template or scenario-local) and link the
+#     shared haproxy-base.cfg mounted beside it as conf.d/00-base.cfg.
 #
 # Re-running this script is idempotent. Edit descriptions in scenarios.tsv,
 # not in the generated README.md files.
@@ -30,6 +33,8 @@ proxy_label() {
         traefik/http)           echo "Traefik" ;;
         traefik/https)          echo "Traefik (HTTPS)" ;;
         traefik/labels)         echo "Traefik (Docker labels)" ;;
+        haproxy/http)           echo "HAProxy" ;;
+        haproxy/https)          echo "HAProxy (HTTPS)" ;;
         *)                      echo "$1" ;;
     esac
 }
@@ -57,6 +62,21 @@ nginx_template_for() {
     rel=$(grep -E '^\s*-\s+\S+:/etc/nginx/templates/default\.conf\.template' "$compose" \
           | head -1 \
           | sed -E 's|^\s*-\s+([^:]+):/etc/nginx/templates/default\.conf\.template.*$|\1|')
+    [[ -z $rel ]] && return 1
+    (cd "$scenario_dir" && cd "$(dirname "$rel")" && echo "$PWD/$(basename "$rel")")
+}
+
+# Resolve the path that docker-compose.yml mounts as the scenario's own HAProxy
+# config (conf.d/10-vaadin.cfg), relative to the scenario dir. It is a shared
+# file under haproxy/templates/ for the families that collapse onto one, and a
+# scenario-local vaadin.cfg otherwise.
+haproxy_config_for() {
+    local scenario_dir="$1"
+    local compose="$scenario_dir/docker-compose.yml"
+    local rel
+    rel=$(grep -E '^\s*-\s+\S+:/usr/local/etc/haproxy/conf\.d/10-vaadin\.cfg' "$compose" \
+          | head -1 \
+          | sed -E 's|^\s*-\s+([^:]+):/usr/local/etc/haproxy/conf\.d/10-vaadin\.cfg.*$|\1|')
     [[ -z $rel ]] && return 1
     (cd "$scenario_dir" && cd "$(dirname "$rel")" && echo "$PWD/$(basename "$rel")")
 }
@@ -135,6 +155,25 @@ write_readme() {
                     echo "_Configured with Docker labels in docker-compose.yml rather than a"
                     echo "config file: this scenario exists to document that idiom. Every"
                     echo "other Traefik scenario uses the file provider._"
+                fi
+                ;;
+            haproxy/*)
+                local cfg
+                if cfg=$(haproxy_config_for "$scenario_dir"); then
+                    local cfg_rel="${cfg#"$repo_root"/}"
+                    echo "HAProxy config (\`$cfg_rel\`), mounted as"
+                    echo "\`conf.d/10-vaadin.cfg\`:"
+                    echo
+                    echo '```haproxy'
+                    cat_with_trailing_newline "$cfg"
+                    echo '```'
+                    echo
+                    echo "The \`global\` section, and the two \`defaults\` sections this file"
+                    echo "inherits from, come from the shared"
+                    echo "[haproxy-base.cfg](../../haproxy-base.cfg), mounted read-only beside"
+                    echo "it as \`conf.d/00-base.cfg\`. Base and scenario only parse as a pair."
+                else
+                    echo "_No HAProxy config mount detected in docker-compose.yml._"
                 fi
                 ;;
         esac
