@@ -52,7 +52,13 @@ public class Application implements AppShellConfigurator {
                     }
                 });
         registrationBean.addUrlPatterns("/test-redirect");
-        registrationBean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // Must run AFTER Spring Boot's ForwardedHeaderFilter, which is
+        // registered at HIGHEST_PRECEDENCE itself: at the same order the two
+        // tie and the winner is decided by bean ordering, so getContextPath()
+        // below may or may not reflect X-Forwarded-Prefix. Proxies that strip
+        // or add a path prefix (traefik/*, which cannot rewrite the Location
+        // header on the way out) depend on the rewritten value.
+        registrationBean.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
         return registrationBean;
     }
 
