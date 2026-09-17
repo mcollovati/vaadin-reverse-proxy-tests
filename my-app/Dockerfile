@@ -14,11 +14,14 @@ ARG VAADIN_VERSION=
 # --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT for the SSE push transport.
 ARG FLOW_VERSION=
 
-# Stop running as root at this point
-RUN useradd -m myuser
+# Stop running as root at this point. The uid is pinned and USER names it by
+# number: a host (or hadolint's DL3066) cannot resolve a name out of the image's
+# own /etc/passwd. 1001 is what `useradd -m myuser` picks anyway on these
+# Ubuntu-based bases, where 1000 is already taken by `ubuntu`.
+RUN useradd -m -u 1001 myuser
 WORKDIR /usr/src/app/
 RUN chown myuser:myuser /usr/src/app/
-USER myuser
+USER 1001
 
 # Copy pom.xml and prefetch dependencies so a repeated build can continue from the next step with existing dependencies
 COPY --chown=myuser pom.xml ./
@@ -38,7 +41,7 @@ RUN mvn -ntp clean package -DskipTests ${VAADIN_VERSION:+-Dvaadin.version=$VAADI
 # Running stage: the part that is used for running the application
 FROM eclipse-temurin:${JAVA_VERSION}
 COPY --from=build /usr/src/app/target/*.jar /usr/app/app.jar
-RUN useradd -m myuser
-USER myuser
+RUN useradd -m -u 1001 myuser
+USER 1001
 EXPOSE 8080
 CMD [ "java", "-jar", "/usr/app/app.jar" ]
