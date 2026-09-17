@@ -121,6 +121,8 @@ else
                         "apache-httpd/ajp-https" \
                         "nginx/http" \
                         "nginx/https" \
+                        "traefik/http" \
+                        "traefik/https" \
                         | gum filter \
                             --header "Reverse proxy (type to filter, Esc to quit):" \
                             --placeholder "Filter proxies…"); then

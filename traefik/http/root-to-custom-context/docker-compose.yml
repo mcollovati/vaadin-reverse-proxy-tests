@@ -1,0 +1,31 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_SERVLET_CONTEXT_PATH: /app
+      # Traefik cannot rewrite Set-Cookie, so the session cookie would come
+      # back scoped to the backend's context path (/app) while the browser is
+      # at /, and every request would start a new session. The other two trees
+      # fix this on the way out (ProxyPassReverseCookiePath, proxy_cookie_path);
+      # here the app has to scope the cookie to the public path itself.
+      SERVER_SERVLET_SESSION_COOKIE_PATH: /
+      # And this is why the cookie path alone is not enough: Vaadin's csrfToken
+      # cookie is scoped to the context path too, the property above only
+      # governs the servlet container's session cookie, and Hilla's client
+      # cannot read a cookie the browser never sends — every endpoint call
+      # comes back 401. FRAMEWORK plus the forwarded-root middleware makes
+      # getContextPath() empty, so both cookie paths, redirects and asset URLs
+      # are all built for the public URL.
+      SERVER_FORWARD_HEADERS_STRATEGY: FRAMEWORK
+  web:
+    depends_on:
+      - vaadin
+    image: "traefik:${TRAEFIK_VERSION:-v3.7}"
+    volumes:
+      - ../../traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./vaadin.yml:/etc/traefik/dynamic/vaadin.yml:ro
+    ports:
+      - "9090:80"

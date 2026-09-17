@@ -5,6 +5,9 @@
 #   - Apache scenarios inline vaadin.conf (and vaadin-location.conf if present).
 #   - NGINX scenarios inline whatever the docker-compose.yml mounts to
 #     /etc/nginx/templates/default.conf.template (shared template or scenario-local).
+#   - Traefik scenarios inline the scenario's vaadin.yml (its dynamic config) and
+#     link the shared traefik.yml. The one label-based scenario has no config
+#     file, so it says so instead.
 #
 # Re-running this script is idempotent. Edit descriptions in scenarios.tsv,
 # not in the generated README.md files.
@@ -24,6 +27,9 @@ proxy_label() {
         apache-httpd/ajp-https) echo "Apache HTTPD (AJP + HTTPS)" ;;
         nginx/http)             echo "NGINX" ;;
         nginx/https)            echo "NGINX (HTTPS)" ;;
+        traefik/http)           echo "Traefik" ;;
+        traefik/https)          echo "Traefik (HTTPS)" ;;
+        traefik/labels)         echo "Traefik (Docker labels)" ;;
         *)                      echo "$1" ;;
     esac
 }
@@ -112,6 +118,24 @@ write_readme() {
                     echo '```'
                 else
                     echo "_No NGINX template mount detected in docker-compose.yml._"
+                fi
+                ;;
+            traefik/*)
+                if [[ -f $scenario_dir/vaadin.yml ]]; then
+                    echo "Traefik dynamic config (\`vaadin.yml\`), mounted into"
+                    echo "\`/etc/traefik/dynamic\`:"
+                    echo
+                    echo '```yaml'
+                    cat_with_trailing_newline "$scenario_dir/vaadin.yml"
+                    echo '```'
+                    echo
+                    echo "The entryPoints and the file provider come from the shared"
+                    echo "[traefik.yml](../../traefik.yml), mounted read-only."
+                else
+                    echo "_This scenario is configured with Docker labels in"
+                    echo "docker-compose.yml rather than a config file — it exists to"
+                    echo "document that idiom. Every other Traefik scenario uses the file"
+                    echo "provider._"
                 fi
                 ;;
         esac

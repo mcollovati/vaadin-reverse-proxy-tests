@@ -1,0 +1,74 @@
+name: Traefik
+
+# Thin caller: decides when the Traefik tree runs. All the logic is in
+# _scenarios.yml. Path filters are the point of splitting per proxy — a PR that
+# only touches apache-httpd/ has no reason to spin up the Traefik jobs.
+
+on:
+  pull_request:
+    paths:
+      - 'traefik/**'
+      - 'my-app/**'
+      - 'integration-tests/**'
+      - 'scripts/**'
+      - 'tls/**'
+      - 'run-test.sh'
+      - 'scenarios.tsv'
+      - '.github/proxy-images.txt'
+      - '.github/workflows/traefik.yml'
+      - '.github/workflows/_scenarios.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'traefik/**'
+      - 'my-app/**'
+      - 'integration-tests/**'
+      - 'scripts/**'
+      - 'tls/**'
+      - 'run-test.sh'
+      - 'scenarios.tsv'
+      - '.github/proxy-images.txt'
+      - '.github/workflows/traefik.yml'
+      - '.github/workflows/_scenarios.yml'
+  workflow_dispatch:
+    inputs:
+      scenario_filter:
+        description: "Extended-regex filter on the scenario key (empty = the whole tree)."
+        type: string
+        default: ""
+      include_sse:
+        description: "Run the *-sse scenarios."
+        type: boolean
+        default: true
+      vaadin_version:
+        description: "Vaadin version to build (empty = pom default)."
+        type: string
+        default: ""
+      flow_version:
+        description: "Flow version override. Empty = whatever the platform version pulls in."
+        type: string
+        default: ""
+      java_version:
+        description: "JDK for the test runner and the my-app image."
+        type: string
+        default: "21"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Deliberately false on main: cancelling a push-to-main run throws away the
+  # regression signal this repo exists to produce.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scenarios:
+    uses: ./.github/workflows/_scenarios.yml
+    with:
+      proxy: traefik
+      scenario_filter: ${{ inputs.scenario_filter || '' }}
+      include_sse: ${{ github.event_name != 'workflow_dispatch' || inputs.include_sse }}
+      vaadin_version: ${{ inputs.vaadin_version || '' }}
+      flow_version: ${{ inputs.flow_version || '' }}
+      java_version: ${{ inputs.java_version || '21' }}

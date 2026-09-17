@@ -1,0 +1,43 @@
+# Static configuration, shared by every Traefik scenario and mounted read-only,
+# the way apache-httpd/httpd.conf is. Only two things belong here: the
+# entryPoints, and the file provider that watches the per-scenario dynamic
+# config. Each scenario mounts its own vaadin.yml into /etc/traefik/dynamic.
+#
+# The Docker socket is deliberately NOT mounted anywhere in this tree except
+# traefik/labels/root-context, which exists to document the label idiom. A
+# config file is what makes the three trees comparable: it is the artifact the
+# per-scenario README inlines, and labels have no such file.
+#
+# Nothing here configures WebSocket upgrades, because Traefik has no switch for
+# them: every router upgrades when the client asks and proxies plain HTTP
+# otherwise. That is why the *-push-url scenarios need no extra rule, and why
+# the *-sse ones have to remove the client's Upgrade header to refuse.
+#
+# No respondingTimeouts either, unlike ProxyTimeout 300 (apache-httpd/httpd.conf)
+# and proxy_read_timeout 300s (every NGINX template). The docs suggest there
+# should be — readTimeout defaults to 60s and is documented as "the maximum
+# duration for reading the entire request, including the body", which is what
+# the reports of streams severed at exactly 60s point at (traefik/traefik#10652,
+# #13820). Measured on 3.7.13, neither shape is cut: a 75s trickled request body
+# returns 200 at 76s, and an idle WebSocket is still open after 100s. Vaadin's
+# PUSH heartbeat is every 60s, so a push connection is never idle that long in
+# the first place. If a cut ever does appear, readTimeout and idleTimeout of
+# 300s per entryPoint is the fix.
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+# Startup logs one WRN about encoded characters in the request path and one
+# about aliasHeadersStrategy. Both are expected here: the defaults are the safe
+# ones, and the backend is a Java servlet container that reads exact header
+# names rather than deriving variable names from them.
+log:
+  level: INFO
+accessLog: {}
