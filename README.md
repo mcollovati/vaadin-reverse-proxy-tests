@@ -1,5 +1,6 @@
 # Vaadin Application behind reverse proxy
 
+[![Vaadin](https://img.shields.io/badge/dynamic/xml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmcollovati%2Fvaadin-reverse-proxy-tests%2Fmain%2Fmy-app%2Fpom.xml&query=%2F%2A%5Blocal-name%28%29%3D%27project%27%5D%2F%2A%5Blocal-name%28%29%3D%27properties%27%5D%2F%2A%5Blocal-name%28%29%3D%27vaadin.version%27%5D&label=Vaadin&color=00b4f0)](my-app/pom.xml)
 [![Apache HTTPD](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml)
 [![NGINX](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml)
 [![Traefik](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml)
