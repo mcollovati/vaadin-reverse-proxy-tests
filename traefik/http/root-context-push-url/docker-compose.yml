@@ -1,0 +1,20 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Relocate the Vaadin PUSH endpoint. The proxy needs no rule of its own
+      # for it: the catch-all router already carries every path, and Traefik
+      # upgrades whichever route the client asks to upgrade.
+      - VAADIN_PUSH_URL=/VAADIN/push
+  web:
+    depends_on:
+      - vaadin
+    image: "traefik:${TRAEFIK_VERSION:-v3.7}"
+    volumes:
+      - ../../traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./vaadin.yml:/etc/traefik/dynamic/vaadin.yml:ro
+    ports:
+      - "9090:80"

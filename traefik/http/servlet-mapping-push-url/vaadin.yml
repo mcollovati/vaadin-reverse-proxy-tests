@@ -1,0 +1,59 @@
+# servlet-mapping with VAADIN_PUSH_URL=/VAADIN/push.
+#
+# Identical to servlet-mapping/vaadin.yml. The push URL resolves against the
+# context, which here is the root, so the relocated endpoint lands at
+# /VAADIN/push and the catch-all router already carries it. The NGINX sibling
+# needs a dedicated exact-match location for it, purely to attach the Upgrade
+# headers; Traefik upgrades on every route, so there is nothing to add.
+http:
+  routers:
+    hilla-push:
+      rule: PathPrefix(`/ui/HILLA/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-ui
+        - compress
+      service: vaadin
+
+    hilla-connect:
+      rule: PathPrefix(`/ui/connect/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-ui
+        - compress
+      service: vaadin
+
+    # Everything else reaches the backend untouched: /ui/* for the Vaadin
+    # servlet (including /ui/VAADIN/push), and the root-level resources that
+    # stay at the root whatever the mapping is — /VAADIN/*, /sw.js,
+    # /styles.css, /manifest.webmanifest, /icons/*, /images/*, /test-redirect.
+    root:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      priority: 1
+      middlewares:
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    strip-ui:
+      stripPrefix:
+        prefixes:
+          - "/ui"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

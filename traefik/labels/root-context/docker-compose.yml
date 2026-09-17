@@ -1,0 +1,53 @@
+# The label idiom, for readers who expect it — this is the only scenario in the
+# tree configured with Docker labels instead of a file, and the only one that
+# mounts the Docker socket.
+#
+# It is deliberately the exception. Labels lose on the axis this repo cares
+# about: scripts/gen-readmes.sh inlines the proxy config file into each
+# scenario's README, and with labels there is no such file, so the three-way
+# comparison between Apache, NGINX and Traefik collapses into "see the compose
+# file". Twenty-three scenarios would also each need their own copy of the
+# socket mount and the provider flags below.
+#
+# Note what had to move to the `command:` flags: entryPoints are static
+# configuration and no label can express them. The same goes for TLS, which is
+# why traefik/https/* uses the file provider too. Labels only ever describe
+# routers, services and middlewares — the dynamic half.
+#
+# Everything here is equivalent to traefik/http/root-context, which is the
+# scenario to read if you want the configuration rather than the idiom.
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vaadin.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.vaadin.entrypoints=web"
+      - "traefik.http.routers.vaadin.middlewares=compress"
+      # The denylist that keeps a streamed response out of the compressor, as
+      # a comma-separated label value rather than a YAML list. Traefik's
+      # compress middleware does not skip text/event-stream on its own.
+      - "traefik.http.middlewares.compress.compress.excludedcontenttypes=text/event-stream,text/plain"
+      # With the Docker provider the service port has to be named, since
+      # Traefik is reading the container rather than a URL.
+      - "traefik.http.services.vaadin.loadbalancer.server.port=8080"
+  web:
+    depends_on:
+      - vaadin
+    image: "traefik:${TRAEFIK_VERSION:-v3.7}"
+    command:
+      - "--providers.docker=true"
+      # Opt-in only: without this every container in the project would get a
+      # router, including Traefik itself.
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    volumes:
+      # Read-only, and still the reason the rest of the tree uses files: a
+      # container that can read this socket can see every container on the
+      # host.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "9090:80"

@@ -1,13 +1,13 @@
-name: NGINX
+name: Traefik
 
-# Thin caller: decides when the NGINX tree runs. All the logic is in
+# Thin caller: decides when the Traefik tree runs. All the logic is in
 # _scenarios.yml. Path filters are the point of splitting per proxy — a PR that
-# only touches apache-httpd/ has no reason to spin up 23 NGINX jobs.
+# only touches apache-httpd/ has no reason to spin up the Traefik jobs.
 
 on:
   pull_request:
     paths:
-      - 'nginx/**'
+      - 'traefik/**'
       - 'my-app/**'
       - 'integration-tests/**'
       - 'scripts/**'
@@ -15,12 +15,12 @@ on:
       - 'run-test.sh'
       - 'scenarios.tsv'
       - '.github/proxy-images.txt'
-      - '.github/workflows/nginx.yml'
+      - '.github/workflows/traefik.yml'
       - '.github/workflows/_scenarios.yml'
   push:
     branches: [main]
     paths:
-      - 'nginx/**'
+      - 'traefik/**'
       - 'my-app/**'
       - 'integration-tests/**'
       - 'scripts/**'
@@ -28,7 +28,7 @@ on:
       - 'run-test.sh'
       - 'scenarios.tsv'
       - '.github/proxy-images.txt'
-      - '.github/workflows/nginx.yml'
+      - '.github/workflows/traefik.yml'
       - '.github/workflows/_scenarios.yml'
   workflow_dispatch:
     inputs:
@@ -66,7 +66,7 @@ jobs:
   scenarios:
     uses: ./.github/workflows/_scenarios.yml
     with:
-      proxy: nginx
+      proxy: traefik
       scenario_filter: ${{ inputs.scenario_filter || '' }}
       include_sse: ${{ github.event_name != 'workflow_dispatch' || inputs.include_sse }}
       vaadin_version: ${{ inputs.vaadin_version || '' }}

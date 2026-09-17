@@ -15,3 +15,4 @@
 # docker-compose ecosystem bumps those; this list has to follow.
 httpd:2.4.68
 nginx:1.31.6
+traefik:v3.7

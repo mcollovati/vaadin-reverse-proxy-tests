@@ -1,0 +1,39 @@
+services:
+  vaadin1:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    environment:
+      - APP_NAME=My App One
+      # Distinct session cookie names so the two apps do not overwrite each
+      # other's JSESSIONID in a browser that visits both.
+      - SERVER_SERVLET_SESSION_COOKIE_NAME=JSIDONE
+      # Both apps run at the backend root and are published under a prefix that
+      # Traefik strips. Nothing rewrites a response here, so each app is told
+      # where it really lives: the cookie path for the servlet container, and
+      # FRAMEWORK so Vaadin and Hilla build their URLs — and Hilla's csrfToken
+      # cookie, whose name is the same in both apps — around the public prefix
+      # that stripPrefix reports in X-Forwarded-Prefix.
+      - SERVER_SERVLET_SESSION_COOKIE_PATH=/ui1
+      - SERVER_FORWARD_HEADERS_STRATEGY=FRAMEWORK
+    ports:
+      - "8080:8080"
+  vaadin2:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    environment:
+      - APP_NAME=The other app
+      - SERVER_SERVLET_SESSION_COOKIE_NAME=JSIDTWO
+      - SERVER_SERVLET_SESSION_COOKIE_PATH=/ui2
+      - SERVER_FORWARD_HEADERS_STRATEGY=FRAMEWORK
+    ports:
+      - "7080:8080"
+  web:
+    depends_on:
+      - vaadin1
+      - vaadin2
+    image: "traefik:${TRAEFIK_VERSION:-v3.7}"
+    volumes:
+      - ../../traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./vaadin.yml:/etc/traefik/dynamic/vaadin.yml:ro
+    ports:
+      - "9090:80"

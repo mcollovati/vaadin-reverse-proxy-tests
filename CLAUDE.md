@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo is **not** a deployable application. It is a collection of quick docker-compose
 scenarios that exercise a single Vaadin/Spring Boot test app (`my-app/`) sitting behind
-several reverse-proxy configurations (Apache HTTPD over HTTP and AJP, NGINX over HTTP).
+several reverse-proxy configurations (Apache HTTPD over HTTP and AJP, NGINX over HTTP,
+Traefik over HTTP).
 The goal is to verify that Vaadin Flow + Hilla works correctly through each proxy
 configuration — context paths, custom servlet mappings, custom PUSH URLs, load balancing,
 multi-app routing. README.md is the canonical map of scenarios.
@@ -22,6 +23,13 @@ multi-app routing. README.md is the canonical map of scenarios.
 - `nginx/http/<scenario>/` — `docker-compose.yml` + either an env var pointing at a shared
   template in `nginx/templates/`, or a scenario-local `default.conf.template`. NGINX templates
   are interpolated by the official image from `${VAADIN_PATH}`-style env vars.
+- `traefik/{http,https,labels}/<scenario>/` — `docker-compose.yml` + `vaadin.yml` (the
+  scenario's dynamic config), against a shared `traefik/traefik.yml` (static: entryPoints
+  plus the file provider) mounted read-only. Deliberately the same split as Apache's
+  `httpd.conf` + `vaadin.conf`, and deliberately not Docker labels: `gen-readmes.sh`
+  inlines the proxy config file, and a label-configured scenario has none.
+  `traefik/labels/root-context` is the single exception, documenting the idiom, and the
+  only compose file in the repo that mounts the Docker socket.
 - `integration-tests/` — standalone Maven module with a Playwright smoke suite
   (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`). Driven by `run-test.sh`
   against an already-running scenario; parameterized over the push transports named
@@ -124,37 +132,57 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 - `servlet-mapping` — app at `/` but Vaadin servlet on `/ui/*`; Hilla resources stay on root
   (see comment in `apache-httpd/http/servlet-mapping/vaadin.conf` and Hilla issue #289).
 - `*-push-url` — same scenario but with `VAADIN_PUSH_URL` overridden, requiring an extra
-  WebSocket-only proxy block.
+  WebSocket-only proxy block in the Apache and NGINX trees. Not in `traefik/`: every
+  router upgrades already, so each config there is identical to its sibling and the
+  identical config is the finding. Note the public path — `VAADIN_PUSH_URL` resolves
+  against the context, so under `custom-context` the browser asks for
+  `/app/VAADIN/push`, not `/VAADIN/push`.
 - `load-balancer` — two `vaadin-1` / `vaadin-2` backends, sticky sessions via `jvmRoute`
   (Apache) or a synthesized `ROUTEID` cookie.
-- `multiple-root-context*` — two independent apps mapped under different prefixes by NGINX
-  using rewrite rules (no `SERVER_SERVLET_CONTEXT_PATH` on the backend).
+- `multiple-root-context*` — two independent apps mapped under different prefixes (no
+  `SERVER_SERVLET_CONTEXT_PATH` on the backend): NGINX rewrite rules, or `stripPrefix`
+  in `traefik/`. Distinct session cookie *names* are not enough there, because both apps
+  issue a `csrfToken` under the same name and Traefik cannot rescope it — each app is
+  told its public prefix instead.
 - `*-sse` — same scenario but with PUSH over Server-Sent Events
-  (`VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS`), and a proxy config that deliberately has
-  **no** WebSocket support: no `upgrade=websocket`, no `ws://` worker, no `RewriteRule`
-  on the `Upgrade` header. Needs an app image whose Flow has the SSE transport —
-  Vaadin 25.3-SNAPSHOT / 25.4-SNAPSHOT or later, since the pom's pinned version predates
-  it. CI gates them behind the `include_sse` workflow input. Selecting a WebSocket
-  transport in one of these fails with a 501 from Atmosphere — that is the point of the
-  scenario, not a bug.
+  (`VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS`) through a proxy that cannot upgrade a
+  connection. In the Apache and NGINX trees that is achieved by omission: no
+  `upgrade=websocket`, no `ws://` worker, no `RewriteRule` on the `Upgrade` header.
+  Traefik has no such omission available — every router upgrades when the client asks —
+  so those scenarios **refuse** instead, with a `headers` middleware that deletes the
+  client's `Upgrade` and `Connection` headers. Same semantics, opposite mechanism; when
+  adding an `*-sse` scenario, check which of the two the tree calls for.
+  The transport needs no special app image any more: the pom pins 25.3.0-rc1 and
+  `my-app/src/main/resources/vaadin-featureflags.properties` enables
+  `com.vaadin.experimental.ssePushTransport`, so the default build has it. CI still gates
+  these behind the `include_sse` workflow input. Selecting a WebSocket transport in one
+  of them fails with a 501 from Atmosphere — that is the point of the scenario, not a
+  bug, and it was verified through the middleware as well as through omission.
   Hilla `Flux` endpoints cannot work in these either: Hilla push is WebSocket-only
   (`FluxConnection` sets transport and fallbackTransport both to `websocket`), so
   the ITs skip those assertions via `-Dit.websocket=false`.
+- `*-forwarded-prefix` (Traefik only) — same proxy config as its sibling, plus
+  `SERVER_FORWARD_HEADERS_STRATEGY=FRAMEWORK` on the backend so Spring rebuilds the
+  context path from `X-Forwarded-Prefix`. The only place in the repo using that strategy
+  to repair what a proxy cannot rewrite on the way out.
 - `root-context-legacy` (Apache HTTP only) — kept for comparison with older config style.
 
 When adding a new scenario, mirror an existing sibling: a `docker-compose.yml` that mounts
-the shared `httpd.conf` (Apache) or a template (NGINX), plus the proxy-specific config file.
+the shared `httpd.conf` (Apache), a template (NGINX) or the shared `traefik.yml`
+(Traefik), plus the proxy-specific config file.
 Then add a row to `scenarios.tsv` and run `scripts/gen-readmes.sh` — the catalogue drives the
 CI matrix, the per-scenario READMEs and `run-scenario.sh`'s picker, and a scenario missing
 from it simply never runs. `scripts/check-catalog.sh` enforces both directions and runs in CI.
 Reference the proxy image as `${HTTPD_IMAGE:-httpd:2.4.68}` / `${NGINX_IMAGE:-nginx:1.31.6}`
-rather than a bare tag, and keep `.github/proxy-images.txt` in step.
+/ `traefik:${TRAEFIK_VERSION:-v3.7}` rather than a bare tag, and keep
+`.github/proxy-images.txt` in step. For Traefik that tag is a floor as well as a pin:
+`compress` stalled `text/event-stream` outright before 3.3.5.
 
 ## Continuous integration
 
 `.github/workflows/_scenarios.yml` holds every step (matrix generation, image build,
 readiness waits, tests, summary) and is called by thin per-proxy workflows — `apache.yml`,
-`nginx.yml` — that carry only triggers and path filters, plus `all.yml` for a manual
+`nginx.yml`, `traefik.yml` — that carry only triggers and path filters, plus `all.yml` for a manual
 full-matrix sweep and `lint.yml`. A new proxy tree needs a new caller, not a change to
 `_scenarios.yml`.
 
@@ -208,6 +236,38 @@ full-matrix sweep and `lint.yml`. A new proxy tree needs a new caller, not a cha
 - Hilla endpoints are served from `/HILLA/*` and `/connect/*` regardless of
   `vaadin.url-mapping`. The `servlet-mapping*` configs need explicit `ProxyPassMatch` rules
   for those paths — don't assume the Vaadin URL mapping covers them.
+- Traefik rewrites **nothing** in a response — no `ProxyPassReverse`, no
+  `ProxyPassReverseCookiePath`, no `proxy_redirect`, no `proxy_cookie_path`. Anything the
+  other two trees repair on the way out has to be arranged on the way in
+  (`X-Forwarded-Prefix` plus `SERVER_FORWARD_HEADERS_STRATEGY=FRAMEWORK`), configured in
+  the app (`SERVER_SERVLET_SESSION_COOKIE_PATH`), or documented as broken. The session
+  cookie property is not a substitute for the forwarded prefix: it governs only the
+  servlet container's cookie, while Vaadin's `csrfToken` cookie keeps the context path
+  and Hilla then answers 401 to every endpoint call. `addPrefix` sends no
+  `X-Forwarded-Prefix` of its own — only `stripPrefix` does — so where the proxy adds a
+  prefix the header is set by hand with a `headers` middleware, and `"/"` is the value
+  for "the public prefix is the root": `""` **removes** the header instead.
+- Traefik's `PathPrefix` is a raw string prefix, so `` PathPrefix(`/app`) `` also matches
+  `/application`. Every context-prefix rule in `traefik/` is
+  `` PathPrefix(`/app/`) || Path(`/app`) `` — don't shorten it. `stripPrefix` leaves `/`
+  rather than an empty path for the bare prefix, so no trailing-slash redirect is needed,
+  and a `prefixes` list is a set of alternatives rather than a chain: stripping two
+  segments means naming `"/app/ui"` as one string.
+- Traefik's `compress` middleware is a **denylist** where `gzip_types` is an allowlist,
+  and it does not skip `text/event-stream` on its own. With `minResponseBodyBytes`
+  defaulting to 1024 an un-excluded stream is held until a kilobyte accumulates, so every
+  scenario names `text/event-stream` and `text/plain` in `excludedContentTypes`.
+- `traefik/traefik.yml` deliberately sets no `respondingTimeouts`, unlike
+  `ProxyTimeout 300` and `proxy_read_timeout 300s`. The docs make that look wrong —
+  `readTimeout` defaults to 60s and covers the whole request — but measured on 3.7.13
+  neither a 75s trickled request body nor an idle WebSocket held for 100s is cut. The
+  reasoning is in the file; don't add values without re-measuring.
+- Traefik's TLS entryPoint serves HTTP/2, which the NGINX `listen 443 ssl` sibling does
+  not, and it sends `X-Forwarded-Proto: wss` (not `https`) on a WebSocket upgrade. PUSH
+  works anyway, because the client derives the push URL from the page load. When
+  reproducing an upgrade by hand, `curl` must be given `--http1.1`: over h2 the
+  `Connection` and `Upgrade` headers are forbidden and silently dropped, which makes a
+  broken config look fine.
 - An NGINX `upstream` without a `zone` keeps peer health state **per worker process**. A
   backend that refused a connection while it was booting stays blacklisted (`max_fails=1`,
   `fail_timeout=10s` by default) only in the workers that saw the refusal, so a readiness

@@ -1,0 +1,53 @@
+# App at /, Traefik terminates TLS on https://localhost:9443/ and forwards over
+# plain HTTP to the backend.
+#
+# This is the shortest of the three HTTPS configs in the repo, and the missing
+# line is the interesting part: there is no X-Forwarded-Proto rule. Traefik
+# derives that header from the entryPoint's TLS state on its own. Compare
+# `RequestHeader set X-Forwarded-Proto "https"` in
+# apache-httpd/https/root-context/vaadin.conf and
+# `proxy_set_header X-Forwarded-Proto $scheme` in
+# nginx/https/root-context/default.conf.template.
+#
+# Two things worth knowing about what that header carries here:
+#
+#   - On a WebSocket upgrade Traefik sends X-Forwarded-Proto: wss, not https.
+#     Tomcat's RemoteIpValve only treats "https" as secure, so request
+#     .isSecure() is false for the upgrade itself. PUSH works regardless,
+#     because the client builds the push URL from the page load — which does
+#     carry https — and a relative URL inherits the page's origin.
+#   - The TLS entryPoint offers HTTP/2 through ALPN, so unlike the NGINX
+#     sibling (`listen 443 ssl`, HTTP/1.1 only) this scenario is served over
+#     h2. WebSocket upgrades still happen over HTTP/1.1, since HTTP/2 forbids
+#     the Connection and Upgrade headers; browsers open a separate h1
+#     connection for them.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - websecure
+      tls: {}
+      middlewares:
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain
+
+# Certificates are dynamic configuration, so they live here rather than in the
+# shared traefik.yml, which stays scenario-agnostic.
+tls:
+  certificates:
+    - certFile: /etc/traefik/tls/localhost.crt
+      keyFile: /etc/traefik/tls/localhost.key

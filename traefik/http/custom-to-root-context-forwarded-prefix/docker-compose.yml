@@ -1,0 +1,22 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      # The whole scenario is this one line. FRAMEWORK registers Spring's
+      # ForwardedHeaderFilter, which rebuilds the context path from the
+      # X-Forwarded-Prefix that stripPrefix already sends. Rather than
+      # rewriting the response — which Traefik cannot do — the backend is told
+      # the truth about its public prefix on the way in.
+      SERVER_FORWARD_HEADERS_STRATEGY: FRAMEWORK
+  web:
+    depends_on:
+      - vaadin
+    image: "traefik:${TRAEFIK_VERSION:-v3.7}"
+    volumes:
+      - ../../traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./vaadin.yml:/etc/traefik/dynamic/vaadin.yml:ro
+    ports:
+      - "9090:80"

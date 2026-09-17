@@ -1,0 +1,24 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      - VAADIN_URL_MAPPING=/ui/*
+      - SERVER_SERVLET_CONTEXT_PATH=/app
+      # As in root-to-custom-context: the proxy hides the /app context, and
+      # Traefik can rewrite neither a Set-Cookie path nor a Location header, so
+      # the session cookie is scoped to the public path here and the forwarded
+      # prefix below tells the backend its public context is the root.
+      - SERVER_SERVLET_SESSION_COOKIE_PATH=/
+      - SERVER_FORWARD_HEADERS_STRATEGY=FRAMEWORK
+  web:
+    depends_on:
+      - vaadin
+    image: "traefik:${TRAEFIK_VERSION:-v3.7}"
+    volumes:
+      - ../../traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./vaadin.yml:/etc/traefik/dynamic/vaadin.yml:ro
+    ports:
+      - "9090:80"

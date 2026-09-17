@@ -2,6 +2,7 @@
 
 [![Apache HTTPD](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml)
 [![NGINX](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml)
+[![Traefik](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml)
 [![Lint](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml)
 
 A collection of quick and dirty configurations to test Vaadin application behind
@@ -43,6 +44,9 @@ The scenarios are replicated for the following reverse proxy configuration:
 * Apache HTTPD with AJP and HTTPS termination (root-context only)
 * NGINX
 * NGINX over HTTPS (root-context only)
+* Traefik
+* Traefik over HTTPS (root-context and root-context-sse)
+* Traefik configured with Docker labels (root-context only)
 
 ```
 ├── apache-httpd
@@ -116,6 +120,36 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   └── https
 │       ├── root-context
 │       └── root-context-sse
+├── traefik
+│   ├── traefik.yml (shared static config)
+│   ├── http
+│   │   ├── custom-context
+│   │   ├── custom-context-push-url
+│   │   ├── custom-context-sse
+│   │   ├── custom-to-root-context
+│   │   ├── custom-to-root-context-forwarded-prefix
+│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-servlet-mapping
+│   │   ├── custom-to-root-context-sse
+│   │   ├── load-balancer
+│   │   ├── load-balancer-sse
+│   │   ├── multiple-root-context
+│   │   ├── root-context
+│   │   ├── root-context-push-url
+│   │   ├── root-context-push-url-sse
+│   │   ├── root-context-sse
+│   │   ├── root-to-custom-context
+│   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-servlet-mapping
+│   │   ├── root-to-custom-context-sse
+│   │   ├── servlet-mapping
+│   │   ├── servlet-mapping-push-url
+│   │   └── servlet-mapping-sse
+│   ├── https
+│   │   ├── root-context
+│   │   └── root-context-sse
+│   └── labels
+│       └── root-context
 │
 └── my-app (VAADIN Application)
 ```
@@ -321,9 +355,14 @@ Then pick a tag at run time:
 
 The Server-Sent Events push transport landed in
 [vaadin/flow#24484](https://github.com/vaadin/flow/pull/24484), merged to Flow
-`main`, so it ships in the `25.3-SNAPSHOT` and `25.4-SNAPSHOT` lines. The `*-sse`
-scenarios need an image built from one of those — the pom's pinned version
-predates the transport.
+`main`, so it ships in the `25.3` line and later. The pom now pins
+`25.3.0-rc1`, and `my-app/src/main/resources/vaadin-featureflags.properties`
+sets `com.vaadin.experimental.ssePushTransport=true`, so **the default build
+already carries the transport** — the app logs it among its enabled feature
+previews at startup. The `*-sse` scenarios need no special image.
+
+An explicit build is still useful for testing the transport against a different
+Flow:
 
 ```
 docker build my-app --build-arg VAADIN_VERSION=25.4-SNAPSHOT -t vaadin/my-app:sse
@@ -542,3 +581,131 @@ otherwise. Neither matters for a WebSocket tunnel, but both break a streaming
 HTTP response: without `proxy_http_version 1.1` and `proxy_buffering off`, an
 SSE event stream never reaches the browser incrementally. Every template in this
 repo sets both, plus an explicit `proxy_read_timeout 300s`.
+## Traefik Notes
+
+Traefik is in this repo for one reason above the others: it is the only proxy
+here that **rewrites nothing on the way out**. There is no `ProxyPassReverse`,
+no `ProxyPassReverseCookiePath`, no `proxy_redirect` and no
+`proxy_cookie_path`. Whatever the other two trees quietly repair in a response
+has to be arranged some other way — by telling the backend the truth on the way
+in, by configuring the app, or by documenting the breakage. That is also how
+every Kubernetes ingress behaves, so the scenarios that fail here are worth as
+much as the ones that pass.
+
+Configuration is split the way Apache's is: a shared static
+[`traefik/traefik.yml`](./traefik/traefik.yml) with the entryPoints and the
+file provider, mounted read-only, plus one `vaadin.yml` of dynamic
+configuration per scenario. The Docker socket is not mounted anywhere except
+[`traefik/labels/root-context`](./traefik/labels/root-context), which exists to
+document the label idiom and says why the rest of the tree does not use it.
+
+Pin the version with `TRAEFIK_VERSION`, the way `MY_APP_VERSION` pins the app:
+
+```
+TRAEFIK_VERSION=v3.6 docker compose up
+```
+
+`v3.7` is a floor as well as a default. Between v3.0 and v3.3.4 the `compress`
+middleware stalled a `text/event-stream` response outright
+([traefik#11583](https://github.com/traefik/traefik/pull/11583)), which would
+break every `*-sse` scenario here.
+
+### There is no WebSocket configuration, and that cuts both ways
+
+Traefik upgrades on any route when the client asks, and proxies plain HTTP
+otherwise. Nothing in this tree configures that — compare Apache's
+`upgrade=websocket` and NGINX's `map $http_upgrade` plus
+`Upgrade`/`Connection` headers.
+
+Two consequences:
+
+* The `*-push-url` scenarios need no rule for the relocated endpoint, so each
+  one's config is identical to its sibling. The scenarios are kept anyway: they
+  still exercise `VAADIN_PUSH_URL` end to end, and the identical config is the
+  finding. Note that `VAADIN_PUSH_URL` is resolved against the **context**, so
+  under `custom-context` the browser asks for `/app/VAADIN/push` rather than
+  `/VAADIN/push`.
+* The `*-sse` scenarios cannot simply omit upgrade support the way their Apache
+  and NGINX siblings do. They have to refuse it, with a `headers` middleware
+  that deletes the client's `Upgrade` and `Connection` headers (an empty value
+  removes a header rather than setting it empty). Atmosphere then answers
+  `501 Websocket protocol not supported`, while the same request sent straight
+  to the backend still completes a handshake.
+
+### `PathPrefix` is a raw string prefix
+
+``PathPrefix(`/app`)`` also matches `/application`. Every context-prefix rule
+in this tree is therefore written as ``PathPrefix(`/app/`) || Path(`/app`)``,
+which matches the prefix and its bare form and nothing else.
+
+`stripPrefix` leaves `/` rather than an empty path when the request is for the
+bare prefix, so no redirect rule is needed to add a trailing slash — unlike the
+NGINX `multiple-root-context` template, which rewrites `^(/ui1)$` to add one.
+
+### Compression is a denylist here
+
+Every NGINX template lists the types to compress (`gzip_types`); Traefik's
+`compress` middleware compresses everything except what
+`excludedContentTypes` names. The streamed types have to be listed explicitly,
+in every scenario:
+
+```yaml
+compress:
+  compress:
+    excludedContentTypes:
+      - text/event-stream   # SSE push
+      - text/plain          # streaming and long polling
+```
+
+Leaving them out does not merely compress a stream — `minResponseBodyBytes`
+defaults to 1024, so the middleware holds the response until a kilobyte has
+accumulated, which for a push channel can be a long time.
+
+### What the missing response rewriting costs, scenario by scenario
+
+* `custom-to-root-context` answers `/app/test-redirect` with a `Location` that
+  has lost the prefix. Kept as-is, deliberately.
+  `custom-to-root-context-forwarded-prefix` is the same proxy configuration
+  plus `SERVER_FORWARD_HEADERS_STRATEGY=FRAMEWORK` on the backend, which reads
+  the `X-Forwarded-Prefix` that `stripPrefix` already sends and gets the
+  redirect right. Comparing the two is the point.
+* `root-to-custom-context` needs three things: the session cookie scoped to the
+  public path with `SERVER_SERVLET_SESSION_COOKIE_PATH`, an
+  `X-Forwarded-Prefix: /` middleware (`addPrefix` sends no such header of its
+  own), and `FRAMEWORK`. The cookie path alone is not enough — it governs only
+  the servlet container's session cookie, while Vaadin's `csrfToken` cookie
+  stays on `/app`, and Hilla cannot read a cookie the browser never sends, so
+  every endpoint call comes back `401`.
+* `multiple-root-context` cannot lean on distinct session cookie names alone,
+  because both apps issue a `csrfToken` under the same name and would clobber
+  each other's. Each app is told its public prefix instead.
+
+### Timeouts are deliberately absent
+
+The other two trees carry `ProxyTimeout 300` and `proxy_read_timeout 300s`
+because their defaults cut an idle stream. Traefik's documented default
+`readTimeout` is 60s and covers "the maximum duration for reading the entire
+request, including the body", which looks like the same problem and is what
+reports of streams severed at exactly 60s point at
+([traefik#10652](https://github.com/traefik/traefik/issues/10652)).
+
+Measured on 3.7.13, neither shape is actually cut: a request whose body
+trickles in over 75s returns 200 at 76s, and an idle WebSocket is still open
+after 100s, through a proxy with no timeout configuration at all. Vaadin's PUSH
+heartbeat is every 60s, so a push connection is never idle that long in the
+first place. If a cut does show up, `readTimeout` and `idleTimeout` of 300s per
+entryPoint is the fix.
+
+### HTTP/2 on the TLS entryPoint
+
+`traefik/https/*` is served over HTTP/2, which the NGINX sibling
+(`listen 443 ssl`) is not. WebSocket upgrades still happen over HTTP/1.1, since
+HTTP/2 forbids the `Connection` and `Upgrade` headers; browsers open a separate
+HTTP/1.1 connection for them. Worth knowing when reproducing anything by hand:
+`curl` negotiates h2 and will silently drop an `Upgrade` header unless it is
+given `--http1.1`.
+
+On an upgrade Traefik sends `X-Forwarded-Proto: wss` rather than `https`.
+Tomcat's `RemoteIpValve` only treats `https` as secure, so `request.isSecure()`
+is false for that request; PUSH works regardless, because the client builds the
+push URL from the page load, which does carry `https`.

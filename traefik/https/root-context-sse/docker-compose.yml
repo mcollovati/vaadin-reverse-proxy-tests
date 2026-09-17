@@ -1,0 +1,22 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Honor X-Forwarded-Proto: https from the proxy so Vaadin advertises
+      # wss:// for PUSH and absolute URLs are built with the public scheme.
+      SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
+      VAADIN_PUSH_TRANSPORT: SERVER_SENT_EVENTS
+  web:
+    depends_on:
+      - vaadin
+    image: "traefik:${TRAEFIK_VERSION:-v3.7}"
+    volumes:
+      - ../../traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./vaadin.yml:/etc/traefik/dynamic/vaadin.yml:ro
+      - ../../../tls/localhost.crt:/etc/traefik/tls/localhost.crt:ro
+      - ../../../tls/localhost.key:/etc/traefik/tls/localhost.key:ro
+    ports:
+      - "9443:443"

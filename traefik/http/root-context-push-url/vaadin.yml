@@ -1,0 +1,30 @@
+# root-context with VAADIN_PUSH_URL=/VAADIN/push.
+#
+# This file is identical to root-context/vaadin.yml, and that is the finding.
+# The Apache and NGINX siblings both need an extra block for the relocated
+# endpoint — a ws:// ProxyPass, or a dedicated location with the Upgrade
+# headers — because the endpoint had to be taught to upgrade. Traefik upgrades
+# on every route already, so a relocated push URL is just another path the
+# catch-all router carries.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      middlewares:
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

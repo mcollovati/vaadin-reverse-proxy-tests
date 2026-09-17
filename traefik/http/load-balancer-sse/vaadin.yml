@@ -1,0 +1,42 @@
+# Two backends, sticky sessions, PUSH over Server-Sent Events through a proxy
+# that cannot upgrade a connection.
+#
+# Affinity has to hold for two different things here: the EventSource GET that
+# streams the push channel, and the separate client-to-server XHR POSTs to the
+# same path. Both carry the ROUTEID cookie Traefik set, so both land on the
+# backend that owns the session.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      middlewares:
+        - no-websocket
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        sticky:
+          cookie:
+            name: ROUTEID
+            path: /
+            httpOnly: true
+        servers:
+          - url: http://vaadin-1:8080
+          - url: http://vaadin-2:8080
+
+  middlewares:
+    no-websocket:
+      headers:
+        customRequestHeaders:
+          Upgrade: ""
+          Connection: ""
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

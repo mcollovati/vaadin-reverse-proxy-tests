@@ -1,0 +1,39 @@
+# Two backends behind one router, with sticky sessions.
+#
+# Vaadin needs affinity: the session lives in one backend's memory, so a
+# request that lands on the other one finds no UI. Traefik synthesizes its own
+# affinity cookie rather than reading a route id out of JSESSIONID, so — as
+# with the NGINX sibling — the backends need no Tomcat jvmRoute. APP_NAME is
+# what distinguishes them in the rendered page.
+#
+# The first request carries no cookie and is load-balanced normally, which is
+# why CI warms both backends before the tests: a cold JVM answering a browser's
+# first render can exceed the test timeout.
+http:
+  routers:
+    vaadin:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      middlewares:
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        sticky:
+          cookie:
+            name: ROUTEID
+            path: /
+            httpOnly: true
+        servers:
+          - url: http://vaadin-1:8080
+          - url: http://vaadin-2:8080
+
+  middlewares:
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

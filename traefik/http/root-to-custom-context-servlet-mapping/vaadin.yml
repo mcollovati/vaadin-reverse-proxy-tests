@@ -1,0 +1,77 @@
+# Proxy at /ui/, app on the /app context with the Vaadin servlet on /ui/*. The
+# public URL drops the context prefix; the proxy puts it back when forwarding.
+#
+# Hilla's resources are the awkward part again: they sit at the backend's
+# context root, so /ui/HILLA/* and /ui/connect/* become /app/HILLA/* and
+# /app/connect/* — strip the servlet mapping, then add the context
+# (vaadin/hilla#289). Everything else only gains /app, so /ui/* arrives as
+# /app/ui/* for the Vaadin servlet, including /ui/VAADIN/push.
+#
+# The two middlewares run in the order listed, which is what makes
+# strip-then-add work as a single translation.
+http:
+  routers:
+    hilla-push:
+      rule: PathPrefix(`/ui/HILLA/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-ui
+        - add-app
+        - forwarded-root
+        - compress
+      service: vaadin
+
+    hilla-connect:
+      rule: PathPrefix(`/ui/connect/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-ui
+        - add-app
+        - forwarded-root
+        - compress
+      service: vaadin
+
+    root:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      priority: 1
+      middlewares:
+        - add-app
+        - forwarded-root
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    strip-ui:
+      stripPrefix:
+        prefixes:
+          - "/ui"
+
+    add-app:
+      addPrefix:
+        prefix: /app
+
+    # addPrefix emits no X-Forwarded-Prefix of its own, and without this the
+    # backend builds cookie paths and redirects around /app — which the public
+    # URL does not have. "/" and not "": an empty value removes the header.
+    forwarded-root:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Prefix: "/"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain

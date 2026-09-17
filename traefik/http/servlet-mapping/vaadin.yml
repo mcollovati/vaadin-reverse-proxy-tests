@@ -1,0 +1,64 @@
+# App at /, with the Vaadin servlet bound to /ui/* instead of the root.
+#
+# Hilla does not follow vaadin.url-mapping: /HILLA/* (its push endpoint) and
+# /connect/* (browser-callables) stay at the context root whatever the Vaadin
+# servlet is mapped to, while the browser asks for them under /ui. So those two
+# paths have to be stripped back to the root, and they have to win over the
+# catch-all. See vaadin/hilla#289.
+#
+# Traefik resolves ties by rule length, which would already favour the Hilla
+# rules here, but the priorities are written out rather than relied upon: a
+# subtly wrong order produces a working app with a dead Hilla Flux, which is
+# only caught when the tests run with it.websocket=true.
+http:
+  routers:
+    hilla-push:
+      rule: PathPrefix(`/ui/HILLA/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-ui
+        - compress
+      service: vaadin
+
+    hilla-connect:
+      rule: PathPrefix(`/ui/connect/`)
+      entryPoints:
+        - web
+      priority: 100
+      middlewares:
+        - strip-ui
+        - compress
+      service: vaadin
+
+    # Everything else reaches the backend untouched: /ui/* for the Vaadin
+    # servlet (including /ui/VAADIN/push), and the root-level resources that
+    # stay at the root whatever the mapping is — /VAADIN/*, /sw.js,
+    # /styles.css, /manifest.webmanifest, /icons/*, /images/*, /test-redirect.
+    root:
+      rule: PathPrefix(`/`)
+      entryPoints:
+        - web
+      priority: 1
+      middlewares:
+        - compress
+      service: vaadin
+
+  services:
+    vaadin:
+      loadBalancer:
+        servers:
+          - url: http://vaadin:8080
+
+  middlewares:
+    strip-ui:
+      stripPrefix:
+        prefixes:
+          - "/ui"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - text/plain
