@@ -170,6 +170,11 @@ full-matrix sweep and `lint.yml`. A new proxy tree needs a new caller, not a cha
 - Each job writes one `results.jsonl` row; the `report` job aggregates them into a
   per-proxy table in the run summary and fails if any row is missing, so a cancelled or
   crashed job cannot turn a run green.
+- Third-party actions are pinned to a commit SHA with the version in a trailing comment
+  (`uses: actions/checkout@d23441a… # v6.1.0`); Dependabot updates both. `lint.yml`
+  rejects any `uses:` that is not a 40-character SHA, local `./.github/workflows/…` refs
+  excepted. The actionlint installer is pinned the same way — fetched from a tag, not
+  `main`, and told which version to download.
 
 ## Caveats picked up from existing configs
 
