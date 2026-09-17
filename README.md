@@ -1,5 +1,9 @@
 # Vaadin Application behind reverse proxy
 
+[![Apache HTTPD](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/apache.yml)
+[![NGINX](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml)
+[![Lint](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml)
+
 A collection of quick and dirty configurations to test Vaadin application behind
 a reverse proxy.
 
@@ -240,6 +244,39 @@ java -jar target/myapp-1.0-SNAPSHOT.jar &
 ```
 
 The first run downloads Chromium (~1 min, cached under `~/.cache/ms-playwright`).
+
+### Continuous integration
+
+The same suite runs on GitHub Actions, one job per scenario. The logic lives in
+a single reusable workflow; the rest are thin callers that decide *when* it runs.
+
+| Workflow | Runs on | Scope |
+|---|---|---|
+| `_scenarios.yml` | called by the others | every step: matrix, image build, readiness waits, tests, summary |
+| `apache.yml` | PR + push to `main` touching `apache-httpd/**` or anything shared; manual | the Apache tree |
+| `nginx.yml` | PR + push to `main` touching `nginx/**` or anything shared; manual | the NGINX tree |
+| `all.yml` | manual only | every proxy tree at once — for a Vaadin bump or a Flow branch build |
+| `lint.yml` | PR + push to `main` | actionlint, shellcheck, hadolint, catalogue/README consistency |
+
+A PR that only touches one proxy tree runs only that tree's jobs. Anything
+shared — `my-app/`, `integration-tests/`, `scripts/`, `scenarios.tsv`, `tls/` —
+triggers every tree.
+
+Each run ends with a per-proxy pass/fail table in the workflow summary. A failing
+job puts the failed assertions and the last 40 lines of proxy and app logs
+straight into that summary, and uploads a Playwright trace (open it with
+`npx playwright show-trace <file>`), the failsafe reports and the full compose
+logs as an artifact. Green jobs upload nothing but a one-line result row.
+
+Proxy images are pinned (see `.github/proxy-images.txt`) and shipped to the test
+jobs in the same tarball as the app image, so no job pulls from Docker Hub. This
+matters beyond speed: with `httpd:latest` a red run could be a Vaadin regression
+or an Apache upgrade, with no way to tell after the fact. Override one for a
+local sweep without editing anything:
+
+```bash
+HTTPD_IMAGE=httpd:2.4.67 docker compose up
+```
 
 ## Use local Vaadin SNAPSHOT
 
