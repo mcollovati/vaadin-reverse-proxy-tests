@@ -14,7 +14,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <compiler.plugin.version>3.13.0</compiler.plugin.version>
         <resources.plugin.version>3.3.1</resources.plugin.version>
-        <playwright.version>1.50.0</playwright.version>
+        <playwright.version>1.62.0</playwright.version>
         <junit.version>5.11.4</junit.version>
         <failsafe.version>3.5.5</failsafe.version>
         <app.base.url>http://localhost:8080/</app.base.url>
