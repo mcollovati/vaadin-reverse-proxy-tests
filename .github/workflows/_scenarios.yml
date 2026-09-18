@@ -218,10 +218,17 @@ jobs:
 
       # System libraries for Chromium need root, which the Maven-driven browser
       # install below (running as the runner user) cannot get. Install them via
-      # Playwright's npm CLI, which handles sudo. Keep the version in sync with
-      # integration-tests/pom.xml's playwright.version — lint.yml enforces it.
+      # Playwright's npm CLI, which handles sudo. The npm package and the Java
+      # binding are released in lockstep, so the version is read out of the pom
+      # rather than written here a second time: a Dependabot bump to the pom
+      # needs no matching edit in this file, and there is nothing to keep in sync.
       - name: Install Playwright system dependencies
-        run: npx --yes playwright@1.62.0 install-deps chromium
+        run: |
+          set -eu
+          version=$(sed -nE 's|.*<playwright.version>(.*)</playwright.version>.*|\1|p' \
+            integration-tests/pom.xml)
+          [ -n "$version" ] || { echo "::error::no <playwright.version> in integration-tests/pom.xml"; exit 1; }
+          npx --yes "playwright@$version" install-deps chromium
 
       - name: Install Playwright browser
         working-directory: integration-tests
