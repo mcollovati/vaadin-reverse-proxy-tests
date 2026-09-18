@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Check that scenarios.tsv and the scenario directories on disk agree.
 #
-# scenarios.tsv is the single source of truth for three things: the CI matrix
-# (scripts/gen-matrix.sh), the per-scenario READMEs (scripts/gen-readmes.sh) and
-# run-scenario.sh's picker. Drift in either direction is silent — a scenario
-# missing from the catalogue simply never runs and never appears anywhere, and a
-# catalogue row with no directory behind it fails only once CI tries to start it.
+# scenarios.tsv is the single source of truth for four things: the CI matrix,
+# which scenarios a pull request runs (the tier column), the per-scenario
+# READMEs (scripts/gen-readmes.sh) and run-scenario.sh's picker. Drift in either
+# direction is silent — a scenario missing from the catalogue simply never runs
+# and never appears anywhere, and a catalogue row with no directory behind it
+# fails only once CI tries to start it.
 #
 # Usage: scripts/check-catalog.sh
 # Emits GitHub Actions ::error:: annotations; exits non-zero on any problem.
@@ -30,14 +31,16 @@ cd "$repo_root"
 
 # --- catalogue -> disk -------------------------------------------------------
 declare -A seen=()
+declare -A tiers=()
 while IFS= read -r raw_line; do
     line="${raw_line%$'\r'}"
     [[ -z ${line// } ]] && continue
     [[ ${line:0:1} == "#" ]] && continue
 
-    IFS='|' read -r key _description paths _short <<< "$line"
+    IFS='|' read -r key _description paths _short row_tier <<< "$line"
     key="$(trim "$key")"
     paths="$(trim "$paths")"
+    row_tier="$(trim "$row_tier")"
     [[ -z $key ]] && continue
 
     if [[ -n ${seen[$key]:-} ]]; then
@@ -47,6 +50,16 @@ while IFS= read -r raw_line; do
 
     [[ -f $key/docker-compose.yml ]] \
         || err "scenarios.tsv lists '$key' but $key/docker-compose.yml does not exist"
+
+    # The tier column decides whether CI runs the scenario on every pull request
+    # and push (`smoke`) or only on the weekly sweep (`full`). A missing or
+    # misspelled value is the one mistake this column can make, and it is
+    # silent: gen-matrix.sh would simply leave the row out of the smoke tier.
+    case "$row_tier" in
+        smoke|full) tiers[$row_tier]=$(( ${tiers[$row_tier]:-0} + 1 )) ;;
+        "") err "'$key' has no tier column (expected smoke or full)" ;;
+        *)  err "'$key' has an invalid tier: '$row_tier' (expected smoke or full)" ;;
+    esac
 
     # The paths column drives every URL CI builds. An empty or relative value
     # yields a nonsense URL that only shows up as a timeout in the wait loop.
@@ -74,5 +87,6 @@ done
 
 if [[ $fail -eq 0 ]]; then
     echo "scenarios.tsv: ${#seen[@]} scenario(s), all consistent with the tree."
+    echo "  ${tiers[smoke]:-0} smoke (every pull request and push), ${tiers[full]:-0} full (weekly sweep and dispatch)."
 fi
 exit "$fail"

@@ -2,22 +2,48 @@
 # Emit the GitHub Actions test matrix from scenarios.tsv as a single-line JSON
 # array, suitable for `strategy.matrix.include` via fromJson().
 #
+# Scenarios are grouped into *chunks*: one matrix entry runs several scenarios
+# sequentially in one job. The per-job fixed cost — checkout, downloading and
+# loading the image tarball, the JDK, Playwright's browser and its system
+# libraries — measured ~87s against ~61s of actual scenario work, so one job per
+# scenario spent well over half its time on setup, 112 times per sweep. Chunking
+# pays that once per chunk instead.
+#
 # Each element:
 #   {
-#     "scenario": "apache-httpd/http/root-context",  # proxy/scenario key
-#     "scheme":   "http",                            # http | https
-#     "port":     "9090",                            # 9090 (http) | 9443 (https)
-#     "paths":    ["/"]                              # proxy-relative URL paths
+#     "name":      "apache-httpd 1/5",   # job name; unique, human-readable
+#     "proxy":     "apache-httpd",       # proxy tree the chunk belongs to
+#     "scenarios": [                     # run in order, one after another
+#       {
+#         "scenario": "apache-httpd/http/root-context",
+#         "scheme":   "http",            # http | https
+#         "port":     "9090",            # 9090 (http) | 9443 (https)
+#         "paths":    ["/"]              # proxy-relative URL paths
+#       },
+#       ...
+#     ]
 #   }
 #
-# Optional arg $1 is a filter (extended regex) matched against the scenario
-# key; only matching rows are emitted. No filter (or empty) = all scenarios.
-# Optional arg $2 excludes keys matching a second regex, applied after $1.
+# Chunks never span proxy trees: a job then needs only its own tree's proxy
+# image, and the report job groups result rows by tree anyway.
 #
-#   scripts/gen-matrix.sh                    # every scenario
-#   scripts/gen-matrix.sh nginx              # only nginx/* scenarios
-#   scripts/gen-matrix.sh 'http/root'        # regex match on the key
-#   scripts/gen-matrix.sh '' -- '-sse$'      # every scenario except the SSE ones
+# Usage:
+#   scripts/gen-matrix.sh [--tier smoke|full|all] [--chunk-size N] [filter] [exclude]
+#
+#   --tier        Which catalogue tier to include. `smoke` takes only the rows
+#                 marked smoke; `full` and `all` take every row (a `full` row is
+#                 *also* run by the full sweep, it is not a separate set).
+#                 Default: all.
+#   --chunk-size  Scenarios per job. 1 restores one job per scenario, which is
+#                 what you want when bisecting a flake. Default: 8.
+#   filter        Extended regex matched against the scenario key; only matching
+#                 rows are emitted. Empty = all.
+#   exclude       Second extended regex, applied after `filter`, dropping matches.
+#
+#   scripts/gen-matrix.sh                             # every scenario
+#   scripts/gen-matrix.sh --tier smoke                # what a PR runs
+#   scripts/gen-matrix.sh --chunk-size 1 nginx        # one nginx job per scenario
+#   scripts/gen-matrix.sh '' '\-sse$'                 # everything except the SSE ones
 #
 # The exclusion exists because the *-sse scenarios need an app image built
 # against a Flow version that has the SSE push transport; a run that did not
@@ -29,8 +55,29 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 catalog="$repo_root/scenarios.tsv"
+
+tier="all"
+chunk_size=8
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --tier)       tier="${2:-}"; shift 2 ;;
+        --chunk-size) chunk_size="${2:-}"; shift 2 ;;
+        --)           shift; break ;;
+        -*)           echo "unknown option: $1" >&2; exit 2 ;;
+        *)            break ;;
+    esac
+done
+
 filter="${1:-}"
 exclude="${2:-}"
+
+case "$tier" in
+    smoke|full|all) ;;
+    *) echo "--tier must be smoke, full or all (got '$tier')" >&2; exit 2 ;;
+esac
+[[ $chunk_size =~ ^[1-9][0-9]*$ ]] \
+    || { echo "--chunk-size must be a positive integer (got '$chunk_size')" >&2; exit 2; }
 
 [[ -f $catalog ]] || { echo "scenarios.tsv not found at $catalog" >&2; exit 1; }
 command -v jq >/dev/null || { echo "jq is not installed" >&2; exit 1; }
@@ -47,11 +94,21 @@ while IFS= read -r raw_line; do
     [[ -z ${line// } ]] && continue
     [[ ${line:0:1} == "#" ]] && continue
 
-    # Pipe-separated: key | description | paths | short
-    IFS='|' read -r key _description paths _short <<< "$line"
+    # Pipe-separated: key | description | paths | short | tier
+    IFS='|' read -r key _description paths _short row_tier <<< "$line"
     key="$(trim "$key")"
     paths="$(trim "$paths")"
+    row_tier="$(trim "$row_tier")"
     [[ -z $key ]] && continue
+
+    # An unmarked row would silently vanish from the smoke tier, which is the
+    # one failure mode this column can have. Treat it as a hard error; the same
+    # rule is enforced ahead of time by scripts/check-catalog.sh.
+    case "$row_tier" in
+        smoke|full) ;;
+        *) echo "'$key' has an invalid tier: '$row_tier' (expected smoke or full)" >&2; exit 1 ;;
+    esac
+    [[ $tier == smoke && $row_tier != smoke ]] && continue
 
     if [[ -n $filter ]]; then
         printf '%s' "$key" | grep -Eq "$filter" || continue
@@ -75,4 +132,33 @@ while IFS= read -r raw_line; do
         '{scenario:$scenario, scheme:$scheme, port:$port, paths:$paths}')")
 done < "$catalog"
 
-printf '%s\n' "${entries[@]}" | jq -sc '.'
+# No matches is a legitimate result here (the caller decides whether an empty
+# matrix is an error), but `printf '%s\n' "${entries[@]}"` on an empty array
+# under `set -u` is not.
+if [[ ${#entries[@]} -eq 0 ]]; then
+    echo '[]'
+    exit 0
+fi
+
+# Group by proxy tree, then cut each tree into chunks of at most $chunk_size,
+# preserving catalogue order. The chunk count is what $chunk_size really fixes;
+# the size is then levelled across that many chunks, so a tree of 25 at size 8
+# yields 7/7/7/4 rather than 8/8/8/1 and the slowest job in the wave — which is
+# what sets the wall clock — is as short as it can be. A tree that fits in one
+# chunk keeps its bare name; otherwise the name carries an "i/n" suffix so job
+# names stay unique and say how much of the tree they cover.
+printf '%s\n' "${entries[@]}" | jq -sc --argjson n "$chunk_size" '
+    group_by(.scenario | split("/")[0])
+    | map(
+        . as $tree
+        | ($tree[0].scenario | split("/")[0]) as $proxy
+        | ($tree | length) as $len
+        | (($len + $n - 1) / $n | floor) as $total
+        | (($len + $total - 1) / $total | floor) as $size
+        | [ range(0; $total) as $i
+            | { name: ($proxy + (if $total > 1 then " \($i + 1)/\($total)" else "" end)),
+                proxy: $proxy,
+                scenarios: $tree[$i * $size : ($i + 1) * $size] } ]
+      )
+    | flatten
+'

@@ -43,6 +43,10 @@ multi-app routing. README.md is the canonical map of scenarios.
   (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`). Driven by `run-test.sh`
   against an already-running scenario; parameterized over the push transports named
   by `-Dit.push.transports`.
+- `scripts/` — `gen-matrix.sh` (catalogue → CI matrix), `ci-run-chunk.sh` (the body of the
+  CI test job: brings up, probes, tests and tears down each scenario in a chunk),
+  `gen-readmes.sh`, `check-catalog.sh`, `check-compression.sh`. `lint.yml` shellchecks all
+  of them, which is why CI logic lives here rather than inline in the workflow.
 
 ## Running scenarios
 
@@ -196,6 +200,12 @@ the shared `httpd.conf` (Apache), a template (NGINX), the shared `traefik.yml`
 Then add a row to `scenarios.tsv` and run `scripts/gen-readmes.sh` — the catalogue drives the
 CI matrix, the per-scenario READMEs and `run-scenario.sh`'s picker, and a scenario missing
 from it simply never runs. `scripts/check-catalog.sh` enforces both directions and runs in CI.
+The row's last column is its `tier`: `smoke` if it is the only row in its tree testing that
+mechanism (so every pull request runs it), `full` if a `smoke` row in the same tree would
+almost certainly catch the same breakage (so it runs on the weekly sweep). Most new rows are
+`full` — the smoke tier is 35 of 112 and is meant to stay that size. `check-catalog.sh`
+rejects a missing or misspelled tier, because that failure is otherwise silent: the row just
+quietly stops running on PRs.
 Reference the proxy image as `${HTTPD_IMAGE:-httpd:2.4.68}` / `${NGINX_IMAGE:-nginx:1.31.6}`
 / `traefik:${TRAEFIK_VERSION:-v3.7}` / `${HAPROXY_IMAGE:-haproxy:3.2.23}` rather than a
 bare tag, and keep `.github/proxy-images.txt` in step. For Traefik that tag is a floor as
@@ -205,22 +215,42 @@ well as a pin: `compress` stalled `text/event-stream` outright before 3.3.5.
 
 `.github/workflows/_scenarios.yml` holds every step (matrix generation, image build,
 readiness waits, tests, summary) and is called by thin per-proxy workflows — `apache.yml`,
-`nginx.yml`, `traefik.yml` — that carry only triggers and path filters, plus `all.yml` for a manual
-full-matrix sweep and `lint.yml`. A new proxy tree needs a new caller, not a change to
-`_scenarios.yml`.
+`nginx.yml`, `traefik.yml`, `haproxy.yml` — that carry only triggers and path filters, plus
+`all.yml` for the weekly and manual full-matrix sweep, and `lint.yml`. A new proxy tree needs
+a new caller, not a change to `_scenarios.yml`.
 
+- **A pull request or push runs the `smoke` tier only; the full catalogue runs weekly from
+  `all.yml` and on `workflow_dispatch`.** All 112 scenarios on every event, one job each,
+  was ~125 jobs and ~5 runner-hours per change. Don't restore that by widening the smoke
+  tier scenario by scenario — if a tree needs more coverage on PRs, say why in the row's
+  tier and keep the rest `full`.
+- **One job runs a chunk of scenarios, not one.** Measured on run 35261791814, a
+  per-scenario job spent ~87s on setup (checkout, image tarball, `docker load`, JDK,
+  Playwright browser + system libs) against ~61s of scenario work. `scripts/gen-matrix.sh`
+  emits `{name, proxy, scenarios[]}` chunked to 8 within a tree; `scripts/ci-run-chunk.sh`
+  is the job body. It deliberately has no `set -e`: a failing scenario is data, and stopping
+  at the first one would hide every scenario behind it. It also clears
+  `integration-tests/target/{failsafe-reports,traces}` between scenarios — failsafe does not,
+  and stale reports would be collected as the next scenario's evidence.
+- Chunks never span proxy trees, so a job loads only its own tree's proxy image and the
+  report job can keep grouping rows by tree.
 - Proxy images are pinned and shipped to the test jobs inside the same tarball as the app
   image, so no job pulls from Docker Hub. An unpinned proxy makes a red run ambiguous —
   Vaadin regression, or an Apache upgrade? — which defeats the purpose of the repo.
+  `.github/proxy-images.txt` is two columns, `<tree> <image>`: the tree column is what lets
+  a per-proxy run ship one image instead of four, and it means a new tree still needs no
+  change to `_scenarios.yml`.
 - `scripts/check-compression.sh` runs **after** the integration tests and with
   `if: always()`, never before them. As a gate in front it could skip the whole suite:
   runs 35136594973 and 35138856877 were 63/63 jobs red with not one test executed.
-- Backend containers are identified in the readiness wait by their image
+- Backend containers are identified in `ci-run-chunk.sh`'s readiness wait by their image
   (`vaadin/my-app`), not by a `vaadin*` service name. A new tree that names its app service
   something else would otherwise get a wait step that silently succeeds without waiting.
-- Each job writes one `results.jsonl` row; the `report` job aggregates them into a
-  per-proxy table in the run summary and fails if any row is missing, so a cancelled or
-  crashed job cannot turn a run green.
+- Each *scenario* writes one `results.jsonl` row, whatever happened to it; the `report` job
+  aggregates them into a per-proxy table in the run summary and fails if any row is missing,
+  so a cancelled or crashed job cannot turn a run green. That check matters more with
+  several scenarios per job, not less: a job killed mid-chunk loses every row it had not
+  written yet. The expected count is the scenario count, never the job count.
 - Third-party actions are pinned to a commit SHA with the version in a trailing comment
   (`uses: actions/checkout@d23441a… # v6.1.0`); Dependabot updates both. `lint.yml`
   rejects any `uses:` that is not a 40-character SHA, local `./.github/workflows/…` refs

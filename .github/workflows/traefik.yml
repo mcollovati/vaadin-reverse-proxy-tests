@@ -1,8 +1,15 @@
 name: Traefik
 
 # Thin caller: decides when the Traefik tree runs. All the logic is in
-# _scenarios.yml. Path filters are the point of splitting per proxy — a PR that
-# only touches apache-httpd/ has no reason to spin up the Traefik jobs.
+# _scenarios.yml. Path filters are the point of splitting per proxy:
+# a PR that only touches apache-httpd/ has no reason to spin up the Traefik jobs.
+#
+# On a pull request or a push this runs the **smoke** tier only: the rows marked
+# `smoke` in scenarios.tsv, one per distinct mechanism in the tree. Running the
+# whole catalogue on every event cost ~125 jobs and five runner-hours per change,
+# most of it re-testing variations of a scenario a smoke row already covered.
+# The full catalogue runs weekly from all.yml, and on demand from the dispatch
+# below.
 
 on:
   pull_request:
@@ -32,6 +39,15 @@ on:
       - '.github/workflows/_scenarios.yml'
   workflow_dispatch:
     inputs:
+      tier:
+        description: "Catalogue tier: 'all' for the whole tree, 'smoke' for one scenario per mechanism."
+        type: choice
+        options: [all, smoke]
+        default: all
+      chunk_size:
+        description: "Scenarios per job. 1 gives one job per scenario, for bisecting a flake."
+        type: string
+        default: "8"
       scenario_filter:
         description: "Extended-regex filter on the scenario key (empty = the whole tree)."
         type: string
@@ -67,6 +83,9 @@ jobs:
     uses: ./.github/workflows/_scenarios.yml
     with:
       proxy: traefik
+      # Anything but a manual dispatch gets the smoke tier.
+      tier: ${{ github.event_name == 'workflow_dispatch' && (inputs.tier || 'all') || 'smoke' }}
+      chunk_size: ${{ inputs.chunk_size || '8' }}
       scenario_filter: ${{ inputs.scenario_filter || '' }}
       include_sse: ${{ github.event_name != 'workflow_dispatch' || inputs.include_sse }}
       vaadin_version: ${{ inputs.vaadin_version || '' }}

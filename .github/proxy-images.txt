@@ -2,10 +2,16 @@
 # with httpd:latest / nginx:latest a failure could be a Vaadin regression or a
 # proxy upgrade, and there is no way to tell them apart after the fact.
 #
-# The CI build job pulls these once and ships them in the same tarball as the
-# app image, so no scenario job ever touches Docker Hub. Anonymous pulls are
-# rate-limited per source IP and GitHub-hosted runners share egress, so at
-# 140 jobs per run that was a live flake source as well as a cost.
+# Two whitespace-separated columns: the proxy tree, then its pinned image.
+# The tree column lets a per-proxy run ship only the image it will actually
+# load — an Apache-only run has no use for nginx, traefik and haproxy, and
+# every test job paid for them twice, once downloading the tarball and once in
+# `docker load`. A full sweep (no tree selected) still ships all of them.
+#
+# The build job pulls these once and ships them in the same tarball as the app
+# image, so no scenario job ever touches Docker Hub. Anonymous pulls are
+# rate-limited per source IP and GitHub-hosted runners share egress, so that
+# was a live flake source as well as a cost.
 #
 # Compose files reference them as ${HTTPD_IMAGE:-...} / ${NGINX_IMAGE:-...},
 # so a one-off sweep against a different proxy build needs no file edits:
@@ -13,7 +19,7 @@
 #
 # Keep in sync with the defaults in the compose files. Dependabot's
 # docker-compose ecosystem bumps those; this list has to follow.
-httpd:2.4.68
-nginx:1.31.6
-traefik:v3.7
-haproxy:3.2.23
+apache-httpd    httpd:2.4.68
+nginx           nginx:1.31.6
+traefik         traefik:v3.7
+haproxy         haproxy:3.2.23

@@ -1,13 +1,30 @@
 name: All scenarios
 
-# Manual full-matrix run across every proxy tree — what integration-tests.yml
-# used to be. The per-proxy workflows cover PRs and pushes; this is for
-# deliberate sweeps: a Vaadin version bump, a Flow branch build, or a check
-# that nothing drifted across trees.
+# The full matrix across every proxy tree. Two ways in:
+#
+#   - weekly, on a schedule. The per-proxy workflows run only the `smoke` tier
+#     on pull requests and pushes, so this is what actually exercises the other
+#     77 rows of scenarios.tsv. Without it they would never run.
+#   - manually, for a deliberate sweep: a Vaadin version bump, a Flow branch
+#     build, or a check that nothing drifted across trees.
 
 on:
+  schedule:
+    # Mondays, 03:17 UTC. Off the hour because the whole of GitHub schedules on
+    # it and runs queue; early Monday so a regression introduced during the week
+    # is waiting on Monday morning rather than found on Friday afternoon.
+    - cron: '17 3 * * 1'
   workflow_dispatch:
     inputs:
+      tier:
+        description: "Catalogue tier: 'all' for every scenario, 'smoke' for one per mechanism."
+        type: choice
+        options: [all, smoke]
+        default: all
+      chunk_size:
+        description: "Scenarios per job. 1 gives one job per scenario, for bisecting a flake."
+        type: string
+        default: "8"
       scenario_filter:
         description: "Extended-regex filter on the scenario key (empty = all scenarios)."
         type: string
@@ -40,8 +57,12 @@ jobs:
   scenarios:
     uses: ./.github/workflows/_scenarios.yml
     with:
-      scenario_filter: ${{ inputs.scenario_filter }}
-      include_sse: ${{ inputs.include_sse }}
-      vaadin_version: ${{ inputs.vaadin_version }}
-      flow_version: ${{ inputs.flow_version }}
-      java_version: ${{ inputs.java_version }}
+      # On a schedule every `inputs.*` is null, so each one needs its default
+      # spelled out here rather than relying on the dispatch form's.
+      tier: ${{ inputs.tier || 'all' }}
+      chunk_size: ${{ inputs.chunk_size || '8' }}
+      scenario_filter: ${{ inputs.scenario_filter || '' }}
+      include_sse: ${{ github.event_name != 'workflow_dispatch' || inputs.include_sse }}
+      vaadin_version: ${{ inputs.vaadin_version || '' }}
+      flow_version: ${{ inputs.flow_version || '' }}
+      java_version: ${{ inputs.java_version || '21' }}
