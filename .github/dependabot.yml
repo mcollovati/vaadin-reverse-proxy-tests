@@ -12,11 +12,21 @@ updates:
   # A Vaadin bump is not a chore in this repo, it is the thing under test: the
   # whole point is finding out whether a new version still works behind each
   # proxy. Never auto-merge these; let the per-proxy workflows report on them.
+  #
+  # Which is also why they are the only ungrouped bumps here. Every PR touching
+  # my-app/ starts all four proxy workflows, so five separate PRs in one week
+  # meant five sweeps. A Vaadin bump is worth its own; a Spring Boot or plugin
+  # bump is a chore that only has to be shown not to break anything, and one PR
+  # can show that for the lot. If that grouped PR goes red, split it by hand.
   - package-ecosystem: "maven"
     directory: "/my-app"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      my-app-chores:
+        patterns: ["*"]
+        exclude-patterns: ["com.vaadin*"]
 
   - package-ecosystem: "maven"
     directory: "/integration-tests"

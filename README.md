@@ -248,6 +248,10 @@ descriptions live in [`scenarios.tsv`](./scenarios.tsv); regenerate the
 READMEs with `scripts/gen-readmes.sh` after editing it or after changing the
 underlying proxy config files.
 
+That file is also the CI catalogue: its `tier` column decides whether a scenario
+runs on every pull request or only on the weekly sweep. See
+[Continuous integration](#continuous-integration).
+
 ## Run the smoke tests
 
 The [`integration-tests/`](./integration-tests) module contains a Playwright
@@ -319,32 +323,73 @@ The first run downloads Chromium (~1 min, cached under `~/.cache/ms-playwright`)
 
 ### Continuous integration
 
-The same suite runs on GitHub Actions, one job per scenario. The logic lives in
-a single reusable workflow; the rest are thin callers that decide *when* it runs.
+The same suite runs on GitHub Actions. The logic lives in a single reusable
+workflow; the rest are thin callers that decide *when* it runs.
 
 | Workflow | Runs on | Scope |
 |---|---|---|
 | `_scenarios.yml` | called by the others | every step: matrix, image build, readiness waits, tests, summary |
 | `apache.yml` | PR + push to `main` touching `apache-httpd/**` or anything shared; manual | the Apache tree |
 | `nginx.yml` | PR + push to `main` touching `nginx/**` or anything shared; manual | the NGINX tree |
-| `all.yml` | manual only | every proxy tree at once — for a Vaadin bump or a Flow branch build |
+| `traefik.yml` | PR + push to `main` touching `traefik/**` or anything shared; manual | the Traefik tree |
+| `haproxy.yml` | PR + push to `main` touching `haproxy/**` or anything shared; manual | the HAProxy tree |
+| `all.yml` | weekly (Mondays 03:17 UTC); manual | every proxy tree at once, full catalogue |
 | `lint.yml` | PR + push to `main` | actionlint, shellcheck, hadolint, catalogue/README consistency |
 
 A PR that only touches one proxy tree runs only that tree's jobs. Anything
 shared — `my-app/`, `integration-tests/`, `scripts/`, `scenarios.tsv`, `tls/` —
 triggers every tree.
 
-Each run ends with a per-proxy pass/fail table in the workflow summary. A failing
-job puts the failed assertions and the last 40 lines of proxy and app logs
-straight into that summary, and uploads a Playwright trace (open it with
+#### Two tiers, and several scenarios per job
+
+Running all 112 scenarios on every event, one job each, cost ~125 jobs and
+around five runner-hours per change. Two things cut that to ~20 jobs without
+dropping a scenario from the catalogue:
+
+**The `tier` column in `scenarios.tsv`.** A pull request or a push runs the
+`smoke` tier — one scenario per distinct *mechanism* in a tree: rewrite
+direction, servlet mapping, load balancing, TLS, a transport that cannot
+upgrade. 35 rows of 112. The other 77 are variations whose breakage a smoke row
+in the same tree would almost certainly catch too, and they run on the weekly
+sweep and on `workflow_dispatch`. When adding a scenario that tests something no
+other row in its tree does, mark it `smoke`.
+
+**Chunking.** One job runs several scenarios in sequence rather than one each.
+Measured on a real run, a per-scenario job spent ~87s on setup — checkout, the
+image tarball, the JDK, Playwright's browser and its system libraries — against
+~61s of actual scenario work, so over half of every job was overhead paid 112
+times. `scripts/gen-matrix.sh` groups the catalogue into chunks of 8 within a
+proxy tree; `scripts/ci-run-chunk.sh` brings each scenario up, probes it, tests
+it, tears it down and moves on. It keeps going after a failure — which
+scenarios broke is the whole output of this repo — and the job goes red at the
+end if any did.
+
+To get back to one job per scenario when bisecting a flake, dispatch a workflow
+with `chunk_size: 1`.
+
+```bash
+# the full catalogue, on demand
+gh workflow run all.yml
+
+# one tree, every scenario, one job each
+gh workflow run apache.yml -f tier=all -f chunk_size=1
+```
+
+Each run ends with a per-proxy pass/fail table in the workflow summary. A failed
+scenario puts its failed assertions and the last 40 lines of proxy and app logs
+straight into that summary — the job name no longer names the culprit, so this
+matters more than it did — and uploads a Playwright trace (open it with
 `npx playwright show-trace <file>`), the failsafe reports and the full compose
-logs as an artifact. Green jobs upload nothing but a one-line result row.
+logs as an artifact. Passing scenarios upload nothing but a one-line result row.
+The report job cross-checks the rows against the expected scenario count, so a
+job killed mid-chunk cannot turn a run green.
 
 Proxy images are pinned (see `.github/proxy-images.txt`) and shipped to the test
 jobs in the same tarball as the app image, so no job pulls from Docker Hub. This
 matters beyond speed: with `httpd:latest` a red run could be a Vaadin regression
-or an Apache upgrade, with no way to tell after the fact. Override one for a
-local sweep without editing anything:
+or an Apache upgrade, with no way to tell after the fact. A per-tree run ships
+only its own tree's image. Override one for a local sweep without editing
+anything:
 
 ```bash
 HTTPD_IMAGE=httpd:2.4.67 docker compose up

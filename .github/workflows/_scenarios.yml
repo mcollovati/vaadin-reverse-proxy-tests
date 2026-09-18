@@ -12,6 +12,19 @@ on:
         description: "Proxy tree to run, e.g. apache-httpd, nginx. Empty = all."
         type: string
         default: ""
+      tier:
+        description: >-
+          Catalogue tier: `smoke` runs only the rows marked smoke in
+          scenarios.tsv, `all` runs every row.
+        type: string
+        default: "all"
+      chunk_size:
+        description: >-
+          Scenarios per job. 1 gives one job per scenario, which is what you
+          want when bisecting a flake. A string, not a number: it is only ever
+          handed to a shell script.
+        type: string
+        default: "8"
       scenario_filter:
         description: "Extra extended-regex filter, ANDed with `proxy`."
         type: string
@@ -43,6 +56,7 @@ jobs:
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
       count: ${{ steps.gen.outputs.count }}
+      chunks: ${{ steps.gen.outputs.chunks }}
       image_tag: ${{ steps.tag.outputs.image_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,19 +89,26 @@ jobs:
           # transport. The pom's pinned version may predate it, so they are opt-in.
           exclude=''
           [ "${{ inputs.include_sse }}" = "true" ] || exclude='\-sse$'
-          matrix="$(scripts/gen-matrix.sh "$filter" "$exclude")"
-          n="$(echo "$matrix" | jq length)"
+          matrix="$(scripts/gen-matrix.sh \
+            --tier '${{ inputs.tier }}' \
+            --chunk-size '${{ inputs.chunk_size }}' \
+            "$filter" "$exclude")"
+          chunks="$(echo "$matrix" | jq length)"
+          # The scenario count, not the job count: it is what the report job
+          # checks its result rows against, and one job now carries several.
+          n="$(echo "$matrix" | jq '[.[].scenarios | length] | add // 0')"
           [ "$n" -gt 0 ] \
-            || { echo "::error::No scenarios matched filter '$filter'"; exit 1; }
-          # A silently truncated matrix is far worse than a clear failure, and the
-          # repo is heading for four proxy trees.
-          [ "$n" -le 256 ] \
-            || { echo "::error::$n matrix jobs exceeds GitHub's 256 limit"; exit 1; }
+            || { echo "::error::No scenarios matched tier '${{ inputs.tier }}' and filter '$filter'"; exit 1; }
+          # A silently truncated matrix is far worse than a clear failure.
+          [ "$chunks" -le 256 ] \
+            || { echo "::error::$chunks matrix jobs exceeds GitHub's 256 limit"; exit 1; }
           {
             echo "matrix=$matrix"
             echo "count=$n"
+            echo "chunks=$chunks"
           } >> "$GITHUB_OUTPUT"
-          echo "Matched $n scenario(s)."
+          echo "Matched $n scenario(s) in $chunks job(s)."
+          echo "$matrix" | jq -r '.[] | "  \(.name): \(.scenarios | length) scenario(s)"'
 
   build:
     runs-on: ubuntu-latest
@@ -107,16 +128,32 @@ jobs:
       # One tarball carries everything a scenario job needs, so no test job ever
       # touches Docker Hub. Anonymous pulls are rate-limited per source IP and
       # GitHub-hosted runners share egress, so pulling the proxy image in every
-      # one of N jobs was both a cost and a live flake source.
+      # job was both a cost and a live flake source.
+      #
+      # Only the tree under test is shipped. The tree->image mapping lives in
+      # proxy-images.txt beside the pins, so a new proxy tree still needs no
+      # change here.
+      - name: Resolve the pinned proxy images for this run
+        id: images
+        run: |
+          set -eu
+          images="$(awk -v t='${{ inputs.proxy }}' \
+            '$1 !~ /^#/ && NF >= 2 && (t == "" || $1 == t) { print $2 }' \
+            .github/proxy-images.txt)"
+          [ -n "$images" ] \
+            || { echo "::error::no proxy image in .github/proxy-images.txt for tree '${{ inputs.proxy }}'"; exit 1; }
+          echo "Shipping: $(echo "$images" | tr '\n' ' ')"
+          echo "list=$(echo "$images" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
       - name: Pull the pinned proxy images
-        run: grep -v '^#' .github/proxy-images.txt | grep -v '^[[:space:]]*$' | xargs -r -n1 docker pull
+        run: echo '${{ steps.images.outputs.list }}' | xargs -r -n1 docker pull
 
       - name: Save images
         run: |
           set -eu
-          proxies="$(grep -v '^#' .github/proxy-images.txt | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
           # shellcheck disable=SC2086
-          docker save "vaadin/my-app:${{ needs.prepare.outputs.image_tag }}" $proxies \
+          docker save "vaadin/my-app:${{ needs.prepare.outputs.image_tag }}" \
+            ${{ steps.images.outputs.list }} \
             | gzip > images.tar.gz
 
       - name: Upload image artifact
@@ -128,8 +165,14 @@ jobs:
           compression-level: 0
 
   test:
+    # One job per chunk, not per scenario. The per-job fixed cost — checkout,
+    # downloading and loading the image tarball, the JDK, Playwright's browser
+    # and its system libraries — measured ~87s against ~61s of actual scenario
+    # work, so one job per scenario spent over half its time on setup, 112 times
+    # per sweep. The matrix name says which slice of the tree a job carries.
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     needs: [prepare, build]
     strategy:
       fail-fast: false
@@ -139,23 +182,17 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.prepare.outputs.matrix) }}
     env:
-      COMPOSE_FILE: ${{ matrix.scenario }}/docker-compose.yml
       MY_APP_VERSION: ${{ needs.prepare.outputs.image_tag }}
-      SCENARIO_PATHS: ${{ toJson(matrix.paths) }}
-      # A scenario connects over the transport its own compose file configures:
-      # the *-sse ones set VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS, the rest
-      # bootstrap over WebSocket.
-      PUSH_TRANSPORTS: ${{ endsWith(matrix.scenario, '-sse') && 'SERVER_SENT_EVENTS' || 'WEBSOCKET_XHR,WEBSOCKET' }}
-      # The *-sse proxies cannot upgrade a connection, so Hilla's reactive
-      # endpoints cannot work there: FluxConnection subscribes with transport
-      # and fallbackTransport both 'websocket'. Those assertions are skipped.
-      IT_WEBSOCKET: ${{ endsWith(matrix.scenario, '-sse') && 'false' || 'true' }}
+      CHUNK: ${{ toJson(matrix.scenarios) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Sanitize scenario id
+      # Artifact names cannot hold a space or a slash, and "apache-httpd 1/5"
+      # has both. printf, not echo: `tr -c` would map echo's trailing newline
+      # too, leaving the line written to $GITHUB_OUTPUT unterminated.
+      - name: Sanitize chunk id
         id: id
-        run: echo "id=$(echo '${{ matrix.scenario }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+        run: echo "id=$(printf '%s' '${{ matrix.name }}' | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Download images
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -195,180 +232,16 @@ jobs:
             -Dexec.mainClass=com.microsoft.playwright.CLI \
             -Dexec.args="install chromium"
 
-      - name: Start scenario stack
-        run: docker compose -f "$COMPOSE_FILE" up -d --no-build
+      # Brings up, probes, tests, compression-checks and tears down every
+      # scenario in the chunk, one after another, and keeps going after a
+      # failure so one broken scenario cannot hide the rest. Writes a
+      # results.jsonl row for each and goes red if any failed.
+      - name: Run scenarios
+        run: scripts/ci-run-chunk.sh
 
-      # Nothing may reach the proxy before the backends accept connections. A
-      # proxy that gets a refused connection remembers it: nginx takes the peer
-      # out of rotation for fail_timeout, Apache for `retry` seconds, and with
-      # two backends that verdict outlives the readiness probe below, which a
-      # single healthy backend (or, in nginx, a single clean worker process) is
-      # enough to satisfy. The published backend ports come from the compose
-      # file itself, so a container that has not started yet cannot be missed.
-      #
-      # Backends are identified by their image rather than by a `vaadin*` service
-      # name: a new proxy tree that names its app service something else would
-      # otherwise get a step that silently waits for nothing and passes.
-      - name: Wait for backends to accept connections
-        run: |
-          set -eu
-          ports=$(docker compose -f "$COMPOSE_FILE" config --format json \
-            | jq -r '.services | to_entries[]
-                     | select((.value.image // "") | startswith("vaadin/my-app"))
-                     | (.value.ports // [])[]
-                     | select(.published != null) | .published | tostring')
-          [ -n "$ports" ] \
-            || { echo "::error::No published backend ports found in $COMPOSE_FILE"; exit 1; }
-          for port in $ports; do
-            echo "Waiting for backend port $port ..."
-            ok=0
-            for _ in $(seq 1 120); do
-              if (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null; then ok=1; break; fi
-              sleep 1
-            done
-            [ "$ok" -eq 1 ] || { echo "::error::Timed out waiting for backend port $port"; exit 1; }
-          done
-
-      - name: Wait for proxy to be ready
-        run: |
-          set -eu
-          fail=0
-          # Require consecutive successes. A single 200 is not enough for a load
-          # balancer: it only proves one backend is up, and a backend that was
-          # refused earlier stays blacklisted by the proxy for its fail_timeout,
-          # so requests keep returning 502 after the app has started listening.
-          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
-            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
-            echo "Waiting for $url ..."
-            ok=0
-            streak=0
-            for _ in $(seq 1 90); do
-              if curl -fsk -o /dev/null "$url"; then
-                streak=$((streak + 1))
-                if [ "$streak" -ge 3 ]; then ok=1; break; fi
-              else
-                streak=0
-              fi
-              sleep 1
-            done
-            if [ "$ok" -ne 1 ]; then echo "::error::Timed out waiting for $url"; fail=1; fi
-          done
-          [ "$fail" -eq 0 ]
-
-      # Sticky-cookie load balancers (nginx `sticky cookie`, Apache balancer)
-      # round-robin the first, cookie-less request, so a fresh browser session
-      # can land on a backend the single readiness probe above never touched.
-      # Under CI contention that cold backend's first Vaadin render can exceed
-      # Playwright's 5s assertion timeout, failing the suite. Issue a burst of
-      # cookie-less requests per path so round-robin warms every backend's JVM
-      # before the tests run. No-op overhead for single-backend scenarios.
-      - name: Warm all backends
-        run: |
-          set -eu
-          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
-            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
-            echo "Warming $url ..."
-            for _ in $(seq 1 20); do curl -fsk -o /dev/null "$url" || true; done
-          done
-
-      - name: Run integration tests
-        id: it
-        run: |
-          set -eu
-          start=$SECONDS
-          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
-            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
-            echo "::group::Tests against $url"
-            ./run-test.sh "$url" -- -Dit.push.transports="$PUSH_TRANSPORTS" -Dit.websocket="$IT_WEBSOCKET"
-            echo "::endgroup::"
-          done
-          echo "duration=$((SECONDS - start))" >> "$GITHUB_OUTPUT"
-
-      # Every proxy config runs with compression on; what must never be
-      # compressed is a streamed response. Asserts that an ordinary HTML
-      # response is gzipped, that /sse-probe is not, and that its ticks still
-      # arrive one at a time rather than in a burst at the end.
-      #
-      # This runs *after* the tests, and runs even when they failed. As a gate in
-      # front of them it could skip the entire suite: runs 35136594973 and
-      # 35138856877 were 63/63 jobs red with not one integration test executed.
-      # "Compression broke the stream" and "the app does not work through this
-      # proxy" are separate findings and neither may hide the other.
-      - name: Check compression leaves the event stream alone
-        id: compression
-        if: always() && steps.it.conclusion != 'skipped'
-        run: |
-          set -eu
-          for path in $(echo "$SCENARIO_PATHS" | jq -r '.[]'); do
-            url="${{ matrix.scheme }}://localhost:${{ matrix.port }}${path}"
-            echo "::group::Compression check against $url"
-            scripts/check-compression.sh "$url"
-            echo "::endgroup::"
-          done
-
-      - name: Record result
-        id: result
-        if: always()
-        run: |
-          set -eu
-          it='${{ steps.it.outcome }}'
-          comp='${{ steps.compression.outcome }}'
-          if [ "$it" = "success" ] && { [ "$comp" = "success" ] || [ "$comp" = "skipped" ]; }; then
-            status=pass
-          else
-            status=fail
-          fi
-          jq -nc \
-            --arg scenario '${{ matrix.scenario }}' \
-            --arg transport "$PUSH_TRANSPORTS" \
-            --arg status "$status" \
-            --arg tests "$it" \
-            --arg compression "$comp" \
-            --argjson duration "${{ steps.it.outputs.duration || 0 }}" \
-            '{scenario:$scenario, transport:$transport, status:$status,
-              tests:$tests, compression:$compression, duration:$duration}' \
-            > results.jsonl
-          cat results.jsonl
-
-      - name: Collect compose logs
-        if: failure()
-        run: docker compose -f "$COMPOSE_FILE" logs --no-color > compose-logs.txt 2>&1 || true
-
-      # Put the evidence in the job summary rather than in an artifact nobody
-      # downloads: with 63 jobs (soon ~140) the first question on a red run is
-      # always "which one, and why", and clicking through to a log to find out
-      # is the slowest possible answer.
-      - name: Surface the failure inline
-        if: failure()
-        run: |
-          {
-            echo "### ❌ \`${{ matrix.scenario }}\`"
-            echo
-            echo "tests: \`${{ steps.it.outcome }}\` · compression: \`${{ steps.compression.outcome }}\` · transport: \`$PUSH_TRANSPORTS\`"
-            echo
-            echo "<details><summary>failed assertions</summary>"
-            echo
-            echo '```'
-            grep -hA5 -E '^(Failures|Tests in error|\[ERROR\].*IT)' \
-              integration-tests/target/failsafe-reports/*.txt 2>/dev/null | head -60 || echo "(no failsafe report)"
-            echo '```'
-            echo
-            echo "</details>"
-            echo
-            echo "<details><summary>last 40 proxy/app log lines</summary>"
-            echo
-            echo '```'
-            tail -n 40 compose-logs.txt 2>/dev/null || echo "(no compose logs)"
-            echo '```'
-            echo
-            echo "</details>"
-            echo
-            echo "[⬇ full artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Always uploaded, but it is one small JSON line: the report job needs a
-      # row from every scenario, including the ones that passed.
-      - name: Upload result row
+      # Always uploaded, but it is one small JSON line per scenario: the report
+      # job needs a row from every scenario, including the ones that passed.
+      - name: Upload result rows
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -377,24 +250,30 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # The heavy evidence — reports, traces, logs — only when there is something
-      # to diagnose. Uploading it on every green run produced 63 artifacts a run
-      # for nothing.
+      # The heavy evidence — reports, traces, logs — only for the scenarios that
+      # actually failed. Uploading it on every green run produced dozens of
+      # artifacts a run for nothing.
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: failure-${{ steps.id.outputs.id }}
-          path: |
-            integration-tests/target/failsafe-reports/**
-            integration-tests/target/traces/**
-            compose-logs.txt
+          path: failure-artifacts/**
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Tear down scenario stack
+      # ci-run-chunk.sh tears each scenario down as it finishes, so this only
+      # catches a job cancelled or timed out mid-scenario. Scoped to this
+      # chunk's own compose files rather than `docker rm -f $(docker ps -aq)`:
+      # on a self-hosted runner that would take out containers this job never
+      # started.
+      - name: Tear down any surviving containers
         if: always()
-        run: docker compose -f "$COMPOSE_FILE" down -v
+        run: |
+          set -eu
+          printf '%s' "$CHUNK" | jq -r '.[].scenario' | while read -r scenario; do
+            docker compose -f "$scenario/docker-compose.yml" down -v || true
+          done
 
   report:
     runs-on: ubuntu-latest
@@ -418,7 +297,7 @@ jobs:
           expected='${{ needs.prepare.outputs.count }}'
           actual="$(wc -l < all.jsonl | tr -d ' ')"
           {
-            echo "## Scenario results — \`${{ inputs.proxy && inputs.proxy || 'all proxies' }}\`"
+            echo "## Scenario results — \`${{ inputs.proxy && inputs.proxy || 'all proxies' }}\` (\`${{ inputs.tier }}\` tier)"
             echo
             if [ "$actual" -eq 0 ]; then
               echo "No results were reported. Every test job failed before it could record one."
@@ -445,11 +324,18 @@ jobs:
               echo "> ⚠️ $actual of $expected scenarios reported a result."
               echo "> The rest were cancelled or died before recording one."
             fi
+            if [ '${{ inputs.tier }}' = 'smoke' ]; then
+              echo
+              echo "> This was the **smoke** tier: one scenario per distinct mechanism."
+              echo "> The full catalogue runs on the weekly sweep and on \`workflow_dispatch\`."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The report job is what the caller sees, so it has to carry the verdict:
       # a missing row is a failure too, otherwise a cancelled or crashed job
-      # would quietly turn the run green.
+      # would quietly turn the run green. With several scenarios per job that
+      # matters more, not less — a job killed mid-chunk loses every row it had
+      # not written yet.
       - name: Fail if any scenario failed
         run: |
           set -eu
