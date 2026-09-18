@@ -37,9 +37,9 @@ updates:
         patterns:
           - "org.junit*"
           - "org.apache.maven.plugins*"
-    # Note: a Playwright bump here also has to be reflected in
-    # .github/workflows/_scenarios.yml, which installs the browser's system
-    # libraries through Playwright's npm CLI. lint.yml fails if they disagree.
+    # Note: a Playwright bump here also drives .github/workflows/_scenarios.yml,
+    # which installs the browser's system libraries through Playwright's npm CLI
+    # at the version it reads back out of this pom. Nothing else to edit.
 
   # The my-app build and runtime base images.
   - package-ecosystem: "docker"

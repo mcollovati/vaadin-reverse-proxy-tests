@@ -76,17 +76,6 @@ jobs:
           git diff --exit-code -- '*/README.md' \
             || { echo "::error::scenarios.tsv and the generated READMEs disagree; run scripts/gen-readmes.sh and commit the result"; exit 1; }
 
-      - name: Playwright version is consistent
-        run: |
-          set -eu
-          # The workflow installs Chromium's system libraries through Playwright's
-          # npm CLI and so carries a second copy of the version. A Dependabot bump
-          # to the pom would otherwise desynchronise them silently.
-          pom=$(sed -nE 's|.*<playwright.version>(.*)</playwright.version>.*|\1|p' integration-tests/pom.xml)
-          [ -n "$pom" ] || { echo "::error::no <playwright.version> in integration-tests/pom.xml"; exit 1; }
-          grep -q "playwright@$pom" .github/workflows/_scenarios.yml \
-            || { echo "::error::_scenarios.yml pins a different Playwright than the pom's $pom"; exit 1; }
-
       - name: Proxy images are pinned
         run: |
           set -eu
