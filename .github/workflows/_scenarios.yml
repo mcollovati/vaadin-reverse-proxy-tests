@@ -157,7 +157,7 @@ jobs:
             | gzip > images.tar.gz
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: images-${{ inputs.proxy && inputs.proxy || 'all' }}
           path: images.tar.gz
@@ -195,7 +195,7 @@ jobs:
         run: echo "id=$(printf '%s' '${{ matrix.name }}' | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Download images
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: images-${{ inputs.proxy && inputs.proxy || 'all' }}
 
@@ -250,7 +250,7 @@ jobs:
       # job needs a row from every scenario, including the ones that passed.
       - name: Upload result rows
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: results-${{ steps.id.outputs.id }}
           path: results.jsonl
@@ -262,7 +262,7 @@ jobs:
       # artifacts a run for nothing.
       - name: Upload failure artifacts
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: failure-${{ steps.id.outputs.id }}
           path: failure-artifacts/**
@@ -289,7 +289,7 @@ jobs:
     if: always() && needs.prepare.result == 'success'
     steps:
       - name: Download result rows
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: results-*
           path: results
