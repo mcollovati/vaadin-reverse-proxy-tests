@@ -30,10 +30,17 @@ http:
           Upgrade: ""
           Connection: ""
 
-    # See root-context/vaadin.yml: this denylist is what keeps the event stream
-    # out of the compressor, and it is load-bearing for every *-sse scenario.
+    # See root-context/vaadin.yml: leaving text/event-stream off the allowlist is
+    # what keeps the event stream out of the compressor, and it is load-bearing
+    # for every *-sse scenario.
     compress:
       compress:
-        excludedContentTypes:
-          - text/event-stream
-          - text/plain
+        # An allowlist, the same types as gzip_types (nginx) and `compression type`
+        # (HAProxy). Streams (text/event-stream, text/plain) and media stay out.
+        includedContentTypes:
+          - text/html
+          - text/css
+          - application/javascript
+          - application/json
+          - application/xml
+          - image/svg+xml

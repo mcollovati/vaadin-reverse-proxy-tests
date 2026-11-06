@@ -27,10 +27,10 @@ services:
       - "traefik.http.routers.vaadin.rule=PathPrefix(`/`)"
       - "traefik.http.routers.vaadin.entrypoints=web"
       - "traefik.http.routers.vaadin.middlewares=compress"
-      # The denylist that keeps a streamed response out of the compressor, as
-      # a comma-separated label value rather than a YAML list. Traefik's
-      # compress middleware does not skip text/event-stream on its own.
-      - "traefik.http.middlewares.compress.compress.excludedcontenttypes=text/event-stream,text/plain"
+      # The allowlist of types to compress, as a comma-separated label value
+      # rather than a YAML list. Streams (text/event-stream, text/plain) and
+      # media are not on it, see http/root-context/vaadin.yml.
+      - "traefik.http.middlewares.compress.compress.includedcontenttypes=text/html,text/css,application/javascript,application/json,application/xml,image/svg+xml"
       # With the Docker provider the service port has to be named, since
       # Traefik is reading the container rather than a URL.
       - "traefik.http.services.vaadin.loadbalancer.server.port=8080"
