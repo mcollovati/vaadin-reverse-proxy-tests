@@ -26,6 +26,10 @@
              scenarios set it to false, which skips the Hilla push assertions:
              Hilla FluxConnection is WebSocket-only. -->
         <it.websocket>true</it.websocket>
+        <!-- Shell command that restarts the scenario's proxy, for
+             PushReconnectIT. Empty skips that test: only the CI runner, which
+             started the compose project, knows what to restart. -->
+        <it.proxy.restart.cmd></it.proxy.restart.cmd>
     </properties>
 
     <dependencies>
@@ -84,6 +88,7 @@
                         <app.base.url>${app.base.url}</app.base.url>
                         <it.push.transports>${it.push.transports}</it.push.transports>
                         <it.websocket>${it.websocket}</it.websocket>
+                        <it.proxy.restart.cmd>${it.proxy.restart.cmd}</it.proxy.restart.cmd>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

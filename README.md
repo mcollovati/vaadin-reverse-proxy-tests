@@ -628,6 +628,35 @@ declares a third one. Each sets a flag on `window`. `RuntimeScriptsIT` waits for
 the flags and checks that each file answered 200; on failure it lists the
 script responses and the `<script>` elements on the page.
 
+### Push recovers after the proxy restarts
+
+Restarting the proxy is the everyday way a push connection gets cut: the
+browser side dies at once, the backend side some time later. Flow 25.4 fixed
+three ways that went wrong: the late disconnect of the old connection cleared
+the new one, so server pushes stopped
+([vaadin/flow#26690](https://github.com/vaadin/flow/pull/26690)); repeated drops
+switched the page to long polling for good
+([#26617](https://github.com/vaadin/flow/pull/26617)); and with WEBSOCKET_XHR a
+lost connection was never shown
+([#26309](https://github.com/vaadin/flow/pull/26309)).
+
+`PushCounterView` (`/push-counter`) pushes a counter every 500 ms with no user
+input. `PushReconnectIT` opens it once per push transport, restarts the proxy
+three times, and after each restart checks that the counter moves again, that
+`window.Vaadin.connectionState` is back to `connected`, and that the client
+opened a new connection of the same transport: a new WebSocket (not long
+polling) or, in the `*-sse` scenarios, a new `EventSource`.
+
+The test runs the shell command in `-Dit.proxy.restart.cmd` and is skipped
+without it. `scripts/ci-run-chunk.sh` sets it to `docker compose -f <file>
+restart <service>` for every service whose image is not `vaadin/my-app`. To run
+it by hand against a running scenario:
+
+```
+./run-test.sh http://localhost:9090/ -- -Dit.test=PushReconnectIT \
+    -Dit.proxy.restart.cmd="docker compose -f $PWD/nginx/http/root-context/docker-compose.yml restart web"
+```
+
 ## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so
