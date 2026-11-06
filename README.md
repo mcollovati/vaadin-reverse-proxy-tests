@@ -657,6 +657,36 @@ it by hand against a running scenario:
     -Dit.proxy.restart.cmd="docker compose -f $PWD/nginx/http/root-context/docker-compose.yml restart web"
 ```
 
+### Byte ranges of a media file through the proxy
+
+Since Flow 25.4 a download handler can answer `Range` requests. The main use is
+seeking in audio and video. `DownloadsView` (`/downloads`) serves a short WAV
+file (`audio/wav`, 16044 bytes) with `enableRangeRequests()`, both as the source
+of an `<audio>` element and as a download link. The download name,
+`range "sample" é.wav`, also ends up encoded in the download URL.
+`DownloadRangesIT` checks that:
+
+- a media request, `Range: bytes=0-` or `Range: bytes=8044-` with
+  `Accept-Encoding: identity;q=1, *;q=0` (what Chrome sends for a media
+  element), gets `206` with the right `Content-Range` and bytes, and no
+  `Content-Encoding`;
+- a real `<audio>` element loads the file, gets only `206` answers, and can
+  seek to 1.5 s. Without range support it stays at 0;
+- for resuming a download: the full download, asked for with
+  `Accept-Encoding: gzip`, keeps `Accept-Ranges: bytes` and the app's `ETag`,
+  and `If-Range` with that `ETag` resumes with a `206`, not a full `200`;
+- `Content-Disposition` arrives byte for byte as Flow sent it.
+
+A media element never asks for compression, so the media checks do not depend
+on the compression settings. The resume checks do: a proxy that compresses
+`audio/wav` for a client that accepts gzip changes the answer. Apache's
+`mod_deflate` adds `-gzip` to the `ETag` (`DeflateAlterETag AddSuffix` is the
+default), nginx and HAProxy make the `ETag` weak, which `If-Range` never
+matches, and nginx and Traefik drop `Accept-Ranges`. All four proxies
+here compress only a list of text types, so `audio/wav` is not affected.
+Traefik used to compress every type except the two stream types and failed the
+`Accept-Ranges` check, which is why its scenarios now use `includedContentTypes`.
+
 ## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so
@@ -772,24 +802,34 @@ which matches the prefix and its bare form and nothing else.
 bare prefix, so no redirect rule is needed to add a trailing slash — unlike the
 NGINX `multiple-root-context` template, which rewrites `^(/ui1)$` to add one.
 
-### Compression is a denylist here
+### Compression is an allowlist, as on the other proxies
 
-Every NGINX template lists the types to compress (`gzip_types`); Traefik's
-`compress` middleware compresses everything except what
-`excludedContentTypes` names. The streamed types have to be listed explicitly,
-in every scenario:
+Traefik's `compress` middleware compresses every type unless told otherwise,
+and it does not skip `text/event-stream` on its own. So every scenario lists
+the types to compress in `includedContentTypes`, the same list as NGINX's
+`gzip_types` and HAProxy's `compression type`:
 
 ```yaml
 compress:
   compress:
-    excludedContentTypes:
-      - text/event-stream   # SSE push
-      - text/plain          # streaming and long polling
+    includedContentTypes:
+      - text/html
+      - text/css
+      - application/javascript
+      - application/json
+      - application/xml
+      - image/svg+xml
 ```
 
-Leaving them out does not merely compress a stream — `minResponseBodyBytes`
-defaults to 1024, so the middleware holds the response until a kilobyte has
-accumulated, which for a push channel can be a long time.
+`text/event-stream` (SSE push) and `text/plain` (streaming and long polling)
+stay out by not being named. If a stream were compressed, `minResponseBodyBytes`
+(1024 by default) would make the middleware hold the response until a kilobyte
+has accumulated, which for a push channel can be a long time.
+
+Media stays out too. The scenarios used to name only the two stream types in
+`excludedContentTypes`, so Traefik compressed everything else, also
+`audio/wav`. For a client that accepts gzip it then removed `Accept-Ranges`
+from the full answer, which `DownloadRangesIT` reports.
 
 ### What the missing response rewriting costs, scenario by scenario
 
@@ -945,7 +985,7 @@ and why.
 ### Compression is an allowlist, and other things the base carries
 
 `compression type` names the types to compress, like NGINX's `gzip_types` and
-unlike Traefik's denylist, so `text/event-stream` (SSE push) and `text/plain`
+Traefik's `includedContentTypes`, so `text/event-stream` (SSE push) and `text/plain`
 (streaming and long polling) stay out by simply not being named. A backslash
 does **not** continue a directive, so the list stays on one line.
 

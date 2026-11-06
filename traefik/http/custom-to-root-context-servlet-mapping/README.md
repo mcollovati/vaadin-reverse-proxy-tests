@@ -81,9 +81,15 @@ http:
 
     compress:
       compress:
-        excludedContentTypes:
-          - text/event-stream
-          - text/plain
+        # An allowlist, the same types as gzip_types (nginx) and `compression type`
+        # (HAProxy). Streams (text/event-stream, text/plain) and media stay out.
+        includedContentTypes:
+          - text/html
+          - text/css
+          - application/javascript
+          - application/json
+          - application/xml
+          - image/svg+xml
 ```
 
 The entryPoints and the file provider come from the shared

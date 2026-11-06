@@ -41,8 +41,8 @@ multi-app routing. README.md is the canonical map of scenarios.
   `backend … from vaadin`.
 - `integration-tests/` — standalone Maven module with a Playwright smoke suite
   (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`, and for Flow 25.4+
-  `RuntimeScriptsIT` for runtime `@JavaScript` URLs and `PushReconnectIT`, which
-  restarts the proxy). Driven by `run-test.sh`
+  `RuntimeScriptsIT` for runtime `@JavaScript` URLs, `PushReconnectIT`, which restarts
+  the proxy, and `DownloadRangesIT` for byte ranges of a media file). Driven by `run-test.sh`
   against an already-running scenario; parameterized over the push transports named
   by `-Dit.push.transports`. `PushReconnectIT` runs the shell command in
   `-Dit.proxy.restart.cmd` and is skipped without it; `ci-run-chunk.sh` passes
@@ -310,10 +310,12 @@ a new caller, not a change to `_scenarios.yml`.
   rather than an empty path for the bare prefix, so no trailing-slash redirect is needed,
   and a `prefixes` list is a set of alternatives rather than a chain: stripping two
   segments means naming `"/app/ui"` as one string.
-- Traefik's `compress` middleware is a **denylist** where `gzip_types` is an allowlist,
-  and it does not skip `text/event-stream` on its own. With `minResponseBodyBytes`
-  defaulting to 1024 an un-excluded stream is held until a kilobyte accumulates, so every
-  scenario names `text/event-stream` and `text/plain` in `excludedContentTypes`.
+- Traefik's `compress` middleware compresses every type by default and does not skip
+  `text/event-stream` on its own. With `minResponseBodyBytes` defaulting to 1024 a
+  compressed stream is held until a kilobyte accumulates. So every scenario lists the
+  types to compress in `includedContentTypes`, the same list as `gzip_types` (NGINX) and
+  `compression type` (HAProxy). Streams and media (it dropped `Accept-Ranges` on
+  `audio/wav`) stay out.
 - `traefik/traefik.yml` deliberately sets no `respondingTimeouts`, unlike
   `ProxyTimeout 300` and `proxy_read_timeout 300s`. The docs make that look wrong —
   `readTimeout` defaults to 60s and covers the whole request — but measured on 3.7.13
