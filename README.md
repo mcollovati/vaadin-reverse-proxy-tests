@@ -610,6 +610,29 @@ It asserts that an ordinary HTML response *is* compressed (otherwise the rest
 proves nothing), that `/sse-probe` is *not*, and that its ticks still arrive one
 at a time.
 
+## Vaadin 25.4 checks
+
+### Byte ranges of a download through a compressing proxy
+
+Since Flow 25.4 a download handler can answer `Range` requests, which media
+players need to seek and browsers need to resume a download. Every proxy here
+compresses `application/json`, and `DownloadsView` (`/downloads`) offers a JSON
+download with `enableRangeRequests()`. Its download name, `range "sample" é.json`,
+also ends up encoded in the download URL. `DownloadRangesIT` checks that:
+
+- a `Range: bytes=0-99` request gets `206` with `Content-Range: bytes 0-99/<n>`,
+  exactly 100 bytes, and no `Content-Encoding`;
+- the full download keeps `Accept-Ranges: bytes`, and its `ETag` is the same as
+  on a `206` answer, which a proxy never compresses;
+- `If-Range` with that `ETag` resumes with a `206`, not a full `200`;
+- `Content-Disposition` arrives byte for byte as Flow sent it.
+
+Apache's `mod_deflate` adds `-gzip` to the `ETag` of a response it compresses
+(`DeflateAlterETag AddSuffix` is the default), so the two `ETag` checks are
+expected to fail in the Apache scenarios: a resumed download through them gets
+the whole file again. Checked locally with a proxy that changes the `ETag` the
+same way.
+
 ## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so
