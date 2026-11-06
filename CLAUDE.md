@@ -40,9 +40,12 @@ multi-app routing. README.md is the canonical map of scenarios.
   by frontends *and* backends; scenarios write `frontend … from vaadin-front` and
   `backend … from vaadin`.
 - `integration-tests/` — standalone Maven module with a Playwright smoke suite
-  (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`). Driven by `run-test.sh`
+  (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`, and `PushReconnectIT`, which
+  restarts the proxy). Driven by `run-test.sh`
   against an already-running scenario; parameterized over the push transports named
-  by `-Dit.push.transports`.
+  by `-Dit.push.transports`. `PushReconnectIT` runs the shell command in
+  `-Dit.proxy.restart.cmd` and is skipped without it; `ci-run-chunk.sh` passes
+  `docker compose restart` of every non-backend service.
 - `scripts/` — `gen-matrix.sh` (catalogue → CI matrix), `ci-run-chunk.sh` (the body of the
   CI test job: brings up, probes, tests and tears down each scenario in a chunk),
   `gen-readmes.sh`, `check-catalog.sh`, `check-compression.sh`. `lint.yml` shellchecks all
