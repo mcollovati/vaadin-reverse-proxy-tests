@@ -109,6 +109,60 @@ public class Application implements AppShellConfigurator {
         return registrationBean;
     }
 
+    /**
+     * A plain HTML page that embeds the two exported web components
+     * ({@code <rp-counter-a>} and {@code <rp-counter-b>}), for
+     * {@code WebComponentsIT}.
+     * <p>
+     * The scripts are referenced relative to the page
+     * ({@code web-component/rp-counter-a.js}), and the page is served both at
+     * the context root and under the Vaadin servlet mapping. So whatever base
+     * URL a scenario's tests use ({@code /}, {@code /app/}, {@code /ui/}), the
+     * scripts resolve to where the Vaadin servlet serves them, and the browser
+     * loads both in parallel, with no session yet.
+     * <p>
+     * A filter rather than a static file, because a static file is only served
+     * at the context root, not under the servlet mapping.
+     */
+    @Bean
+    FilterRegistrationBean<?> embedPage(
+            @Value("${vaadin.url-mapping:}") String urlMapping) {
+        FilterRegistrationBean<OncePerRequestFilter> registrationBean = new FilterRegistrationBean<>(
+                new OncePerRequestFilter() {
+
+                    @Override
+                    protected void doFilterInternal(HttpServletRequest request,
+                            HttpServletResponse response,
+                            FilterChain filterChain) throws IOException {
+                        response.setContentType("text/html");
+                        response.setCharacterEncoding("UTF-8");
+                        response.getWriter().write("""
+                                <!doctype html>
+                                <html>
+                                <head>
+                                  <meta charset="utf-8">
+                                  <title>Embedded web components</title>
+                                  <script type="module" src="web-component/rp-counter-a.js"></script>
+                                  <script type="module" src="web-component/rp-counter-b.js"></script>
+                                </head>
+                                <body>
+                                  <h1>Embedded web components</h1>
+                                  <rp-counter-a id="counter-a"></rp-counter-a>
+                                  <rp-counter-b id="counter-b"></rp-counter-b>
+                                </body>
+                                </html>
+                                """);
+                    }
+                });
+        registrationBean.addUrlPatterns("/embed.html");
+        String baseMapping = urlMapping.replaceFirst("/\\*$", "");
+        if (!baseMapping.isEmpty()) {
+            registrationBean.addUrlPatterns(baseMapping + "/embed.html");
+        }
+        registrationBean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registrationBean;
+    }
+
     @Bean
     @ConditionalOnProperty(name = "vaadin.url-mapping")
     FilterRegistrationBean<?> publicImagesAliasFilter(
