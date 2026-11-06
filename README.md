@@ -610,6 +610,24 @@ It asserts that an ordinary HTML response *is* compressed (otherwise the rest
 proves nothing), that `/sse-probe` is *not*, and that its ticks still arrive one
 at a time.
 
+## Vaadin 25.4 checks
+
+### Runtime `@JavaScript` URLs
+
+Since Flow 25.4, a `@JavaScript` value with a runtime prefix such as `context://`
+is not bundled. On the app shell, Flow writes it into the initial page as a
+`<script>` element with a URL relative to the page (`./js/shell-script.js`); on a
+view, it adds the element when the view is shown. The browser then fetches the
+file through the proxy, from the servlet context root, whatever the Vaadin servlet
+mapping is. A proxy that rewrites the public path, or only forwards the servlet
+path, turns that into a 404, and the script silently never runs.
+
+`Application` declares a classic script and an ES module
+(`type = JavaScript.Type.MODULE`), and `RuntimeScriptsView` (`/runtime-scripts`)
+declares a third one. Each sets a flag on `window`. `RuntimeScriptsIT` waits for
+the flags and checks that each file answered 200; on failure it lists the
+script responses and the `<script>` elements on the page.
+
 ## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so

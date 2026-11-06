@@ -1,5 +1,6 @@
 package com.example.application;
 
+import com.vaadin.flow.component.dependency.JavaScript;
 import com.vaadin.flow.component.dependency.StyleSheet;
 import com.vaadin.flow.theme.aura.Aura;
 import jakarta.servlet.FilterChain;
@@ -32,6 +33,12 @@ import com.vaadin.flow.server.PWA;
 @PWA(name = "My App", shortName = "My App", offlineResources = {})
 @StyleSheet(Aura.STYLESHEET)
 @StyleSheet("context://styles.css")
+// Runtime scripts on the app shell (Flow 25.4+): written into the initial page
+// as <script> elements with a URL relative to the page, and fetched through the
+// proxy. RuntimeScriptsIT checks that both load; RuntimeScriptsView adds a
+// third one at view level.
+@JavaScript("context://js/shell-script.js")
+@JavaScript(value = "context://js/shell-module.js", type = JavaScript.Type.MODULE)
 public class Application implements AppShellConfigurator {
 
     public static void main(String[] args) {
