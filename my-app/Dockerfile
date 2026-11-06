@@ -14,6 +14,14 @@ ARG VAADIN_VERSION=
 # --build-arg FLOW_VERSION=25.4.sse2-SNAPSHOT for the SSE push transport.
 ARG FLOW_VERSION=
 
+# The Node.js that Flow 25.4 downloads (26.x) links against libatomic, which
+# the Maven base image does not ship. Without it `node --version` exits with 127
+# and build-frontend fails. The package version is left to the base image.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Stop running as root at this point. The uid is pinned and USER names it by
 # number: a host (or hadolint's DL3066) cannot resolve a name out of the image's
 # own /etc/passwd. 1001 is what `useradd -m myuser` picks anyway on these
