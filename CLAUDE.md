@@ -42,7 +42,8 @@ multi-app routing. README.md is the canonical map of scenarios.
 - `integration-tests/` — standalone Maven module with a Playwright smoke suite
   (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`, and for Flow 25.4+
   `RuntimeScriptsIT` for runtime `@JavaScript` URLs, `PushReconnectIT`, which restarts
-  the proxy, and `DownloadRangesIT` for byte ranges of a media file). Driven by `run-test.sh`
+  the proxy, `DownloadRangesIT` for byte ranges of a media file, and `WebComponentsIT`
+  for embedded web components on `embed.html`). Driven by `run-test.sh`
   against an already-running scenario; parameterized over the push transports named
   by `-Dit.push.transports`. `PushReconnectIT` runs the shell command in
   `-Dit.proxy.restart.cmd` and is skipped without it; `ci-run-chunk.sh` passes

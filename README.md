@@ -687,6 +687,37 @@ here compress only a list of text types, so `audio/wav` is not affected.
 Traefik used to compress every type except the two stream types and failed the
 `Accept-Ranges` check, which is why its scenarios now use `includedContentTypes`.
 
+### Embedded web components
+
+The app exports one server-side component under two tags, `<rp-counter-a>` and
+`<rp-counter-b>`, and serves a plain page that embeds both at `embed.html`, at the
+context root and under the Vaadin servlet mapping. The page loads the two
+scripts in parallel with paths relative to the page (`web-component/rp-counter-a.js`),
+so it works whatever prefix a scenario uses.
+
+Up to Flow 25.3, every web component script request and the root `/favicon.ico`
+created a session, so a first visit to such a page created several in parallel,
+and an embedded component could end up in a session that did not have its UI
+("Session Expired"). Flow 25.4 serves them without a session
+([vaadin/flow#26304](https://github.com/vaadin/flow/pull/26304),
+[#26532](https://github.com/vaadin/flow/pull/26532),
+[#26535](https://github.com/vaadin/flow/pull/26535)). What is left of the race is
+the proxy's: a load balancer can still send the cookie-less script requests to
+different backends, and a proxy that rewrites cookie paths can drop the session
+cookie the components need.
+
+`WebComponentsIT` checks that both scripts and the origin's `/favicon.ico` answer
+without a `JSESSIONID` cookie (a proxy's own `ROUTEID` is allowed), and that both
+embedded counters render and count clicks. Against Vaadin 25.3.3, the cookie
+check fails at the first script.
+
+The favicon check also covers a proxy that maps the root of the site to an app
+with a context path (`root-to-custom-context*`): the browser's `/favicon.ico`
+then reaches the app as `/app/favicon.ico`. Flow created a session for it until
+[vaadin/flow#26888](https://github.com/vaadin/flow/pull/26888)
+(issue [#26887](https://github.com/vaadin/flow/issues/26887)), so those
+scenarios fail on 25.4.0-alpha5.
+
 ## Apache HTTPD Notes
 
 For simplicity, the proxy configuration are set in a `<Location>` section, so
