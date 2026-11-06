@@ -41,7 +41,7 @@ multi-app routing. README.md is the canonical map of scenarios.
   `backend … from vaadin`.
 - `integration-tests/` — standalone Maven module with a Playwright smoke suite
   (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`, and `DownloadRangesIT` for
-  byte ranges of a download through a compressing proxy, Flow 25.4+). Driven by `run-test.sh`
+  byte ranges of a media file through the proxy, Flow 25.4+). Driven by `run-test.sh`
   against an already-running scenario; parameterized over the push transports named
   by `-Dit.push.transports`.
 - `scripts/` — `gen-matrix.sh` (catalogue → CI matrix), `ci-run-chunk.sh` (the body of the
