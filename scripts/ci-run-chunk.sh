@@ -120,6 +120,24 @@ warm_backends() {
     done
 }
 
+# The command PushReconnectIT runs to restart the proxy: `docker compose
+# restart` of every service that is not a backend. Backends are recognized by
+# their image, as in wait_for_backends, so a tree that names its proxy service
+# differently needs no change here. Restarting a backend instead would end the
+# session, which is a different test.
+proxy_restart_command() {
+    local compose_file="$1" services
+    services=$(docker compose -f "$compose_file" config --format json \
+        | jq -r '.services | to_entries[]
+                 | select((.value.image // "") | startswith("vaadin/my-app") | not)
+                 | .key' | tr '\n' ' ')
+    if [[ -z ${services// /} ]]; then
+        echo "::error::No proxy service found in $compose_file" >&2
+        return 1
+    fi
+    echo "docker compose -f $repo_root/$compose_file restart ${services% }"
+}
+
 report_failure() {
     local scenario="$1" id="$2" it="$3" comp="$4" transport="$5"
     local dir="$artifacts/$id"
@@ -163,7 +181,7 @@ report_failure() {
 run_scenario() {
     local scenario="$1" scheme="$2" port="$3" paths_json="$4"
     local compose_file="$scenario/docker-compose.yml"
-    local id transport websocket
+    local id transport websocket restart_cmd
     local it="skipped" comp="skipped" status="fail" duration=0
     local urls=() path start
 
@@ -194,7 +212,8 @@ run_scenario() {
 
     if docker compose -f "$compose_file" up -d --no-build \
         && wait_for_backends "$compose_file" \
-        && wait_for_proxy "${urls[@]}"; then
+        && wait_for_proxy "${urls[@]}" \
+        && restart_cmd=$(proxy_restart_command "$compose_file"); then
 
         warm_backends "${urls[@]}"
 
@@ -202,7 +221,8 @@ run_scenario() {
         start=$SECONDS
         for url in "${urls[@]}"; do
             if ! ./run-test.sh "$url" -- \
-                -Dit.push.transports="$transport" -Dit.websocket="$websocket"; then
+                -Dit.push.transports="$transport" -Dit.websocket="$websocket" \
+                -Dit.proxy.restart.cmd="$restart_cmd"; then
                 it="failure"
             fi
         done

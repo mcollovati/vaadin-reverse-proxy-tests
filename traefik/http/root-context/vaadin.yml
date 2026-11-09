@@ -22,14 +22,21 @@ http:
 
   middlewares:
     # Compression on, the way a real deployment has it — but never over a
-    # streamed response. Where NGINX has an allowlist (gzip_types) this is a
-    # denylist, so the streamed types must be named: Traefik's compress
-    # middleware does not skip text/event-stream on its own, and its
-    # minResponseBodyBytes default of 1024 means an un-excluded stream is held
-    # until a kilobyte accumulates. text/event-stream is SSE push; text/plain
-    # is streaming and long polling (PushHandler sets that content type).
+    # streamed response, and not over media. Traefik compresses every type
+    # by default and does not skip text/event-stream on its own, and its
+    # minResponseBodyBytes default of 1024 means a compressed stream is held
+    # until a kilobyte accumulates. So the types to compress are listed, as in
+    # NGINX. text/event-stream (SSE push) and text/plain (streaming and long
+    # polling, PushHandler sets that content type) are not on the list, and
+    # neither is audio or video: compressing a media file drops Accept-Ranges.
     compress:
       compress:
-        excludedContentTypes:
-          - text/event-stream
-          - text/plain
+        # An allowlist, the same types as gzip_types (nginx) and `compression type`
+        # (HAProxy). Streams (text/event-stream, text/plain) and media stay out.
+        includedContentTypes:
+          - text/html
+          - text/css
+          - application/javascript
+          - application/json
+          - application/xml
+          - image/svg+xml
