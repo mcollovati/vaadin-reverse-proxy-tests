@@ -1,0 +1,27 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Honor X-Forwarded-Proto: https from the proxy so Vaadin advertises
+      # wss:// for PUSH and absolute URLs are built with the public scheme.
+      SERVER_FORWARD_HEADERS_STRATEGY: NATIVE
+      # Connect over SSE from the first page load and do not fall back: a proxy
+      # that cannot carry SSE must fail visibly, not degrade to long polling.
+      VAADIN_PUSH_TRANSPORT: SERVER_SENT_EVENTS
+  web:
+    depends_on:
+      - vaadin
+    image: "${CADDY_IMAGE:-caddy:2.11.9}"
+    # The image runs `caddy run --config /etc/caddy/Caddyfile` by default, so the
+    # shared Caddyfile is mounted over that path and imports the scenario's site
+    # block from /etc/caddy/vaadin.caddyfile. Base and scenario only load as a pair.
+    volumes:
+      - ../../Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./vaadin.caddyfile:/etc/caddy/vaadin.caddyfile:ro
+      - ../../../tls/localhost.crt:/etc/caddy/tls/localhost.crt:ro
+      - ../../../tls/localhost.key:/etc/caddy/tls/localhost.key:ro
+    ports:
+      - "9443:443"

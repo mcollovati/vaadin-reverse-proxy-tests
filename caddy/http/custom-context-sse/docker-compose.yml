@@ -1,0 +1,23 @@
+services:
+  vaadin:
+    image: vaadin/my-app:${MY_APP_VERSION:-latest}
+    build: ../../../my-app
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_SERVLET_CONTEXT_PATH: /app
+      # Connect over SSE from the first page load and do not fall back: a proxy
+      # that cannot carry SSE must fail visibly, not degrade to long polling.
+      VAADIN_PUSH_TRANSPORT: SERVER_SENT_EVENTS
+  web:
+    depends_on:
+      - vaadin
+    image: "${CADDY_IMAGE:-caddy:2.11.9}"
+    # The image runs `caddy run --config /etc/caddy/Caddyfile` by default, so the
+    # shared Caddyfile is mounted over that path and imports the scenario's site
+    # block from /etc/caddy/vaadin.caddyfile. Base and scenario only load as a pair.
+    volumes:
+      - ../../Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../../templates/passthrough-sse.caddyfile:/etc/caddy/vaadin.caddyfile:ro
+    ports:
+      - "9090:80"

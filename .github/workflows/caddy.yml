@@ -1,0 +1,93 @@
+name: Caddy
+
+# Thin caller: decides when the Caddy tree runs. All the logic is in
+# _scenarios.yml. Path filters are the point of splitting per proxy:
+# a PR that only touches apache-httpd/ has no reason to spin up the Caddy jobs.
+#
+# On a pull request or a push this runs the **smoke** tier only: the rows marked
+# `smoke` in scenarios.tsv, one per distinct mechanism in the tree. Running the
+# whole catalogue on every event cost ~125 jobs and five runner-hours per change,
+# most of it re-testing variations of a scenario a smoke row already covered.
+# The full catalogue runs weekly from all.yml, and on demand from the dispatch
+# below.
+
+on:
+  pull_request:
+    paths:
+      - 'caddy/**'
+      - 'my-app/**'
+      - 'integration-tests/**'
+      - 'scripts/**'
+      - 'tls/**'
+      - 'run-test.sh'
+      - 'scenarios.tsv'
+      - '.github/proxy-images.txt'
+      - '.github/workflows/caddy.yml'
+      - '.github/workflows/_scenarios.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'caddy/**'
+      - 'my-app/**'
+      - 'integration-tests/**'
+      - 'scripts/**'
+      - 'tls/**'
+      - 'run-test.sh'
+      - 'scenarios.tsv'
+      - '.github/proxy-images.txt'
+      - '.github/workflows/caddy.yml'
+      - '.github/workflows/_scenarios.yml'
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Catalogue tier: 'all' for the whole tree, 'smoke' for one scenario per mechanism."
+        type: choice
+        options: [all, smoke]
+        default: all
+      chunk_size:
+        description: "Scenarios per job. 1 gives one job per scenario, for bisecting a flake."
+        type: string
+        default: "8"
+      scenario_filter:
+        description: "Extended-regex filter on the scenario key (empty = the whole tree)."
+        type: string
+        default: ""
+      include_sse:
+        description: "Run the *-sse scenarios."
+        type: boolean
+        default: true
+      vaadin_version:
+        description: "Vaadin version to build (empty = pom default)."
+        type: string
+        default: ""
+      flow_version:
+        description: "Flow version override. Empty = whatever the platform version pulls in."
+        type: string
+        default: ""
+      java_version:
+        description: "JDK for the test runner and the my-app image."
+        type: string
+        default: "21"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Deliberately false on main: cancelling a push-to-main run throws away the
+  # regression signal this repo exists to produce.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scenarios:
+    uses: ./.github/workflows/_scenarios.yml
+    with:
+      proxy: caddy
+      # Anything but a manual dispatch gets the smoke tier.
+      tier: ${{ github.event_name == 'workflow_dispatch' && (inputs.tier || 'all') || 'smoke' }}
+      chunk_size: ${{ inputs.chunk_size || '8' }}
+      scenario_filter: ${{ inputs.scenario_filter || '' }}
+      include_sse: ${{ github.event_name != 'workflow_dispatch' || inputs.include_sse }}
+      vaadin_version: ${{ inputs.vaadin_version || '' }}
+      flow_version: ${{ inputs.flow_version || '' }}
+      java_version: ${{ inputs.java_version || '21' }}

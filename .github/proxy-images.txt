@@ -4,7 +4,7 @@
 #
 # Two whitespace-separated columns: the proxy tree, then its pinned image.
 # The tree column lets a per-proxy run ship only the image it will actually
-# load — an Apache-only run has no use for nginx, traefik and haproxy, and
+# load — an Apache-only run has no use for nginx, traefik, haproxy and caddy, and
 # every test job paid for them twice, once downloading the tarball and once in
 # `docker load`. A full sweep (no tree selected) still ships all of them.
 #
@@ -23,3 +23,4 @@ apache-httpd    httpd:2.4.68
 nginx           nginx:1.31.6
 traefik         traefik:v3.7
 haproxy         haproxy:3.2.23
+caddy           caddy:2.11.9
