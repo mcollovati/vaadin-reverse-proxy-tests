@@ -382,6 +382,9 @@ proxy tree needs a new caller, not a change to `_scenarios.yml`.
   which runs as written. Flat, the `@hilla` matcher never matches: every Hilla endpoint
   call (`/connect`) and Hilla push miss the backend while the Flow views keep working, so
   only `HelloHillaIT` notices (measured: 2 failures in an otherwise green run).
+  That row is `smoke` for this reason — the only one in any tree whose sibling elsewhere
+  is `full` — and `caddy/http/custom-context` (same file as `root-context`) is `full` so
+  the tree's smoke tier stays one CI job. Keep the two together if either moves.
 - A request that no Caddy handler matches is answered `200` with an empty body, not `404`.
   The prefix-stripping site blocks end with `handle { respond 404 }` for that reason;
   keep it when copying one.

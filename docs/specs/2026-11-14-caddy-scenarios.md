@@ -47,11 +47,21 @@ No Caddy-only scenario. 18 catalogue rows are N/A: the 17 AJP rows (Caddy has
 no AJP transport, only HTTP and FastCGI) and `root-context-legacy` (one upgrade
 idiom only).
 
-Tiers: 8 `smoke` — the same mechanisms HAProxy marks smoke (`root-context`,
-`root-context-sse`, `custom-context`, `custom-to-root-context`,
-`servlet-mapping`, `load-balancer`, `multiple-root-context`,
-`https/root-context`), minus its HAProxy-only cookie-prefix row. The catalogue
-grows from 35/112 to 43/135 smoke rows.
+Tiers: 8 `smoke` — `root-context`, `root-context-sse`, `custom-to-root-context`,
+`servlet-mapping`, `root-to-custom-context-servlet-mapping`, `load-balancer`,
+`multiple-root-context`, `https/root-context`. The catalogue grows from 35/112
+to 43/135 smoke rows, and the tree's smoke tier is exactly one CI job (8 per
+chunk).
+
+This differs from HAProxy's smoke set on purpose. `root-to-custom-context-servlet-mapping`
+is the only row that catches finding 9 — the Caddy-specific directive-order
+trap — so by the catalogue's rule ("smoke if it is the only row in its tree
+testing that mechanism") it is `smoke`. To keep the tree at one job,
+`custom-context` is `full` instead: it mounts the same `passthrough.caddyfile`
+as `root-context`, so a breakage in that config shows up in a smoke row anyway.
+What `custom-context` exercises beyond `root-context` is the backend's context
+path, which is the app's behaviour rather than the proxy config's, and the
+weekly sweep still runs it.
 
 ## Step 0 — measured, not assumed (executed 2026-11-14)
 
@@ -108,7 +118,7 @@ ticks ~500 ms apart.
 |---|---|---|---|
 | `http/root-context` | smoke | 16/16 | ok |
 | `http/root-context-sse` | smoke | 13, 1 skipped | ok |
-| `http/custom-context` | smoke | 16/16 | ok |
+| `http/custom-context` | full | 16/16 | ok |
 | `http/custom-to-root-context` | smoke | 16/16 | ok |
 | `http/servlet-mapping` | smoke | 16/16 | ok |
 | `http/load-balancer` | smoke | 16/16 | ok |
@@ -126,7 +136,7 @@ ticks ~500 ms apart.
 | `http/servlet-mapping-push-url` | full | 16/16 | ok |
 | `http/servlet-mapping-sse` | full | 13, 1 skipped | ok |
 | `http/custom-to-root-context-servlet-mapping` | full | 16/16 | ok |
-| `http/root-to-custom-context-servlet-mapping` | full | 16/16 (flat variant: 2 failures, finding 9) | ok |
+| `http/root-to-custom-context-servlet-mapping` | smoke | 16/16 (flat variant: 2 failures, finding 9) | ok |
 | `http/load-balancer-sse` | full | 13, 1 skipped | ok |
 | `https/root-context-sse` | full | 13, 1 skipped | ok |
 
@@ -158,8 +168,3 @@ ticks ~500 ms apart.
 2. **`flush_interval -1`.** Not needed today (finding 2), but it is the setting
    people copy from forum answers for "SSE behind Caddy". Worth a sentence if
    anyone asks; not worth a scenario.
-3. **Should `root-to-custom-context-servlet-mapping` be `smoke`?** It is the only
-   row that catches finding 9, and it is `full`, as in every other tree. By the
-   catalogue's own rule ("smoke if it is the only row in its tree testing that
-   mechanism") it arguably qualifies; it was left `full` to keep the smoke tier
-   the same shape across trees.
