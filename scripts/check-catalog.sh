@@ -20,7 +20,7 @@ catalog="$repo_root/scenarios.tsv"
 
 # Every top-level directory that may hold scenarios. Absent ones are skipped, so
 # this list can name the proxy trees before they exist.
-proxy_trees=(apache-httpd nginx haproxy traefik)
+proxy_trees=(apache-httpd nginx haproxy traefik caddy)
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 

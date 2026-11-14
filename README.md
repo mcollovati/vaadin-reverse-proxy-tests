@@ -5,6 +5,7 @@
 [![NGINX](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/nginx.yml)
 [![Traefik](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/traefik.yml)
 [![HAProxy](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/haproxy.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/haproxy.yml)
+[![Caddy](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/caddy.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/caddy.yml)
 [![Lint](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml/badge.svg)](https://github.com/mcollovati/vaadin-reverse-proxy-tests/actions/workflows/lint.yml)
 
 A collection of quick and dirty configurations to test Vaadin application behind
@@ -51,6 +52,8 @@ The scenarios are replicated for the following reverse proxy configuration:
 * Traefik configured with Docker labels (root-context only)
 * HAProxy
 * HAProxy over HTTPS (root-context and root-context-sse)
+* Caddy
+* Caddy over HTTPS (root-context and root-context-sse)
 
 ```
 ├── apache-httpd
@@ -172,6 +175,39 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   ├── custom-to-root-context-sse
 │   │   ├── load-balancer
 │   │   ├── load-balancer-cookie-prefix
+│   │   ├── load-balancer-sse
+│   │   ├── multiple-root-context
+│   │   ├── root-context
+│   │   ├── root-context-push-url
+│   │   ├── root-context-push-url-sse
+│   │   ├── root-context-sse
+│   │   ├── root-to-custom-context
+│   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-servlet-mapping
+│   │   ├── root-to-custom-context-sse
+│   │   ├── servlet-mapping
+│   │   ├── servlet-mapping-push-url
+│   │   └── servlet-mapping-sse
+│   └── https
+│       ├── root-context
+│       └── root-context-sse
+├── caddy
+│   ├── Caddyfile (shared global options and snippets, imports the scenario's site block)
+│   ├── templates (site blocks shared by several scenarios)
+│   │   ├── add-prefix.caddyfile
+│   │   ├── passthrough.caddyfile
+│   │   ├── passthrough-sse.caddyfile
+│   │   ├── servlet-mapping.caddyfile
+│   │   └── strip-prefix.caddyfile
+│   ├── http
+│   │   ├── custom-context
+│   │   ├── custom-context-push-url
+│   │   ├── custom-context-sse
+│   │   ├── custom-to-root-context
+│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-servlet-mapping
+│   │   ├── custom-to-root-context-sse
+│   │   ├── load-balancer
 │   │   ├── load-balancer-sse
 │   │   ├── multiple-root-context
 │   │   ├── root-context
@@ -333,6 +369,7 @@ workflow; the rest are thin callers that decide *when* it runs.
 | `nginx.yml` | PR + push to `main` touching `nginx/**` or anything shared; manual | the NGINX tree |
 | `traefik.yml` | PR + push to `main` touching `traefik/**` or anything shared; manual | the Traefik tree |
 | `haproxy.yml` | PR + push to `main` touching `haproxy/**` or anything shared; manual | the HAProxy tree |
+| `caddy.yml` | PR + push to `main` touching `caddy/**` or anything shared; manual | the Caddy tree |
 | `all.yml` | weekly (Mondays 03:17 UTC); manual | every proxy tree at once, full catalogue |
 | `lint.yml` | PR + push to `main` | actionlint, shellcheck, hadolint, catalogue/README consistency |
 
@@ -349,7 +386,7 @@ dropping a scenario from the catalogue:
 **The `tier` column in `scenarios.tsv`.** A pull request or a push runs the
 `smoke` tier — one scenario per distinct *mechanism* in a tree: rewrite
 direction, servlet mapping, load balancing, TLS, a transport that cannot
-upgrade. 35 rows of 112. The other 77 are variations whose breakage a smoke row
+upgrade. 43 rows of 135. The other 92 are variations whose breakage a smoke row
 in the same tree would almost certainly catch too, and they run on the weekly
 sweep and on `workflow_dispatch`. When adding a scenario that tests something no
 other row in its tree does, mark it `smoke`.
@@ -682,7 +719,7 @@ on the compression settings. The resume checks do: a proxy that compresses
 `audio/wav` for a client that accepts gzip changes the answer. Apache's
 `mod_deflate` adds `-gzip` to the `ETag` (`DeflateAlterETag AddSuffix` is the
 default), nginx and HAProxy make the `ETag` weak, which `If-Range` never
-matches, and nginx and Traefik drop `Accept-Ranges`. All four proxies
+matches, and nginx and Traefik drop `Accept-Ranges`. All five proxies
 here compress only a list of text types, so `audio/wav` is not affected.
 Traefik used to compress every type except the two stream types and failed the
 `Accept-Ranges` check, which is why its scenarios now use `includedContentTypes`.
@@ -1018,3 +1055,163 @@ counterpart here. `root-context-legacy` exists to contrast Apache's
 pre-2.4.47 `RewriteRule`-on-`Upgrade` idiom with `ProxyPass … upgrade=websocket`;
 HAProxy has only ever had one way to relay an upgrade, so the port would be a
 byte-identical copy of `root-context`.
+
+## Caddy Notes
+
+Caddy is here because it is the proxy a lot of smaller and self-hosted Vaadin
+deployments reach for first — one binary, automatic HTTPS, a config file that
+fits on a screen — and because its configuration model is unlike the other
+four. A Caddyfile is a set of *handlers* chosen by *matchers*, and the order in
+which handlers run is decided by Caddy, not by the order they are written in.
+
+Configuration is split the way Apache's is, and here the mechanism is native:
+Caddy has an `import` directive. Each scenario mounts two files —
+
+```
+caddy/Caddyfile            -> /etc/caddy/Caddyfile        (the image's default config path)
+<the scenario's site block> -> /etc/caddy/vaadin.caddyfile
+```
+
+— and the shared Caddyfile ends with `import /etc/caddy/vaadin.caddyfile`, so
+the image's own command runs unchanged. The shared file carries the global
+options and a `common` snippet (the access log and the compression allowlist)
+that every site block imports with `import common`. Base and site block only
+load as a pair. Pin the version with `CADDY_IMAGE`:
+
+```
+CADDY_IMAGE=caddy:2.10.2 docker compose up
+```
+
+### 23 scenarios, 15 config files
+
+The tree ports the 21 `nginx/http` scenarios and the 2 `https` ones. As in
+`haproxy/`, five files under [`caddy/templates/`](./caddy/templates) are
+mounted by more than one scenario:
+
+| file | mounted by |
+|---|---|
+| `passthrough.caddyfile` | `root-context`, `root-context-push-url`, `custom-context`, `custom-context-push-url` |
+| `passthrough-sse.caddyfile` | `root-context-sse`, `root-context-push-url-sse`, `custom-context-sse` |
+| `strip-prefix.caddyfile` | `custom-to-root-context`, `custom-to-root-context-push-url` |
+| `add-prefix.caddyfile` | `root-to-custom-context`, `root-to-custom-context-push-url` |
+| `servlet-mapping.caddyfile` | `servlet-mapping`, `servlet-mapping-push-url` |
+
+`reverse_proxy` upgrades a connection whenever the client asks, on any path, so
+neither a context path nor a relocated PUSH endpoint needs a rule of its own.
+
+### The `*-sse` scenarios refuse the upgrade with 501
+
+As with Traefik and HAProxy, there is nothing to omit: Caddy relays an upgrade
+with no configuration and has no option to stop it. So the refusal is a named
+matcher and a response:
+
+```caddyfile
+@upgrade header Upgrade *
+respond @upgrade 501
+```
+
+The 501 comes from Caddy, the same answer HAProxy gives, rather than from
+Atmosphere. Plain requests, including the event stream and the
+client-to-server POSTs, go through.
+
+### Directives run in Caddy's order, not in the order you write them
+
+The Caddyfile sorts the directives of a site block into a fixed
+[directive order](https://caddyserver.com/docs/caddyfile/directives#directive-order)
+before it runs them, and in that order `rewrite` comes before `uri`. In
+`root-to-custom-context-servlet-mapping` that matters: the Hilla paths must lose
+`/ui` (`uri strip_prefix`) *before* everything gains `/app` (`rewrite`). Written
+flat, the prefix is added first, the `@hilla` matcher then never matches, and
+the app comes up with Hilla dead: every endpoint call goes to
+`/app/ui/connect/…` instead of `/app/connect/…`. Measured, the Flow views all
+pass and only `HelloHillaIT` fails. A `route` block runs its directives as
+written, and that is the fix.
+
+The mirror scenario, `custom-to-root-context-servlet-mapping`, has no ordering
+to get right: the prefix strip is the `handle_path` itself, and everything
+inside it sees the path that is already stripped.
+
+### Rewriting a response: `header_down` over every value
+
+There is no `ProxyPassReverse` or `proxy_cookie_path`, but `reverse_proxy`'s
+`header_down` takes a regex and a replacement and applies them to **every
+value** of a header. One rule therefore rescopes `JSESSIONID` and `csrfToken`
+at once:
+
+```caddyfile
+header_down Location ^(https?://[^/]+)?/(.*)$ $1/app/$2
+header_down Set-Cookie ^(.*;\s*[Pp]ath=)/(;.*)?$ $1/app$2
+```
+
+The cookie rules are anchored on the end of the header value, for the reason
+the HAProxy notes give: Tomcat writes `Path=/app` with no trailing slash, and a
+rule that matches nothing looks exactly like a rule that was not needed. A
+space inside the regex splits it into two tokens, as in HAProxy's config, so
+`[ ]*` is written `\s*`. Caddy at least fails loudly on it: `header_down` then
+has too many arguments and the config does not load.
+
+One more difference from a `<Location>` or a `location`: a request that no
+handler matches is answered **`200` with an empty body**, not `404`. The
+prefix-stripping scenarios therefore end with `handle { respond 404 }`, so that
+`/hello-flow` outside `/app/` is not found here either.
+
+### Compression is an allowlist, because the default is not
+
+`encode gzip` with no `match` compresses Caddy's built-in list of types, and
+that list includes `text/*`. Measured on 2.11.9, `/sse-probe` came back
+`Content-Encoding: gzip`. It still flushed per event, so nothing stalled, but
+that is exactly the case the [Compression](#compression) section rules out. The
+`common` snippet therefore lists the types, the same list as `gzip_types`,
+`compression type` and `includedContentTypes`, and `text/event-stream`,
+`text/plain` and media stay out.
+
+`reverse_proxy` needs no `proxy_buffering off`: it flushes immediately for
+`text/event-stream` and for any response of unknown length, which covers
+streaming and long polling too.
+
+### Load balancing and the startup race
+
+`lb_policy cookie ROUTEID` makes Caddy write its own affinity cookie
+(`ROUTEID=<hmac>; Path=/; HttpOnly; SameSite=Lax`), an HMAC of the chosen
+upstream's address rather than a readable server id, under the name every
+other tree uses. No health checks are configured, so a backend that refused a
+connection while it was booting is not blacklisted: that request is answered
+`502` and the next one is tried afresh. The startup race described for NGINX's
+`upstream` and Apache's balancer does not arm here, and CI's wait for every
+published backend port still costs nothing.
+
+### TLS: automatic HTTPS, kept out of the way
+
+`caddy/https/*` serve `https://localhost:9443/` with the repo's existing
+certificate and key, mounted unchanged:
+
+```caddyfile
+:443 {
+	tls /etc/caddy/tls/localhost.crt /etc/caddy/tls/localhost.key
+	...
+}
+```
+
+An explicit certificate means nothing is requested from an ACME CA, and a site
+address with a port but no host means no HTTP-to-HTTPS redirect listener is
+started on `:80` either. No `X-Forwarded-Proto` rule is needed: `reverse_proxy`
+sets it from the connection. The site serves HTTP/2, as Traefik and HAProxy do
+(`curl --http1.1` to reproduce an upgrade by hand). HTTP/3 is turned off in the
+shared Caddyfile with `servers { protocols h1 h2 }`, because otherwise every
+response would carry `Alt-Svc: h3=":443"`, pointing at a UDP port the compose
+file does not publish.
+
+### Timeouts are deliberately absent
+
+Like Traefik's, this tree sets none. Caddy has no read, write or
+response-header timeout on a proxied request by default, and the server's
+`idle_timeout` (5 minutes) applies only to a keep-alive connection waiting for
+its next request, which an upgraded connection is not. That is from the
+documentation rather than measured; Vaadin's 60s PUSH heartbeat keeps a push
+connection from being idle that long in any case.
+
+### No AJP, and no `root-context-legacy`
+
+Caddy's `reverse_proxy` speaks HTTP and FastCGI; there is no AJP transport, so
+the 17 AJP scenarios have no counterpart. There is only one way to proxy an
+upgrade, so a `root-context-legacy` port would be a copy of `root-context`.

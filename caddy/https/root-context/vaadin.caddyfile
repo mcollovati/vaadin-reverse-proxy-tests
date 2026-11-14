@@ -1,0 +1,22 @@
+# App at /, Caddy terminates TLS on https://localhost:9443/ and forwards over
+# plain HTTP to the backend.
+#
+# There is no X-Forwarded-Proto rule: reverse_proxy derives that header from the
+# connection's TLS state on its own, as Traefik does. Compare
+# `RequestHeader set X-Forwarded-Proto "https"` (Apache) and
+# `proxy_set_header X-Forwarded-Proto $scheme` (NGINX).
+#
+# Caddy's automatic HTTPS stays out of the way without being switched off. The
+# certificate is given explicitly, so nothing is requested from an ACME CA, and
+# the site address names a port but no host, so no HTTP-to-HTTPS redirect
+# listener is started on :80 either.
+#
+# The site serves HTTP/2 through ALPN, like the Traefik and HAProxy siblings
+# and unlike NGINX's `listen 443 ssl`. HTTP/3 is switched off in the shared
+# Caddyfile. When reproducing an upgrade by hand, give curl --http1.1: over h2
+# the Connection and Upgrade headers are forbidden and silently dropped.
+:443 {
+	tls /etc/caddy/tls/localhost.crt /etc/caddy/tls/localhost.key
+	import common
+	reverse_proxy vaadin:8080
+}

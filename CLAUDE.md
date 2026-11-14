@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repo is **not** a deployable application. It is a collection of quick docker-compose
 scenarios that exercise a single Vaadin/Spring Boot test app (`my-app/`) sitting behind
 several reverse-proxy configurations (Apache HTTPD over HTTP and AJP, NGINX over HTTP,
-Traefik over HTTP, HAProxy over HTTP).
+Traefik over HTTP, HAProxy over HTTP, Caddy over HTTP).
 The goal is to verify that Vaadin Flow + Hilla works correctly through each proxy
 configuration — context paths, custom servlet mappings, custom PUSH URLs, load balancing,
 multi-app routing. README.md is the canonical map of scenarios.
@@ -39,6 +39,13 @@ multi-app routing. README.md is the canonical map of scenarios.
   `defaults` sections because a named one holding `http-request` rules cannot be inherited
   by frontends *and* backends; scenarios write `frontend … from vaadin-front` and
   `backend … from vaadin`.
+- `caddy/{http,https}/<scenario>/` — `docker-compose.yml` plus either a shared site block
+  from `caddy/templates/` or a scenario-local `vaadin.caddyfile`, laid out like `haproxy/`.
+  The split is Apache's and native: the shared `caddy/Caddyfile` is mounted over the image's
+  own `/etc/caddy/Caddyfile` (so its default command runs unchanged) and ends with
+  `import /etc/caddy/vaadin.caddyfile`, where the scenario's site block is mounted. The base
+  holds the global options and a `(common)` snippet — access log plus the compression
+  allowlist — that every site block pulls in with `import common`.
 - `integration-tests/` — standalone Maven module with a Playwright smoke suite
   (`BaseIT`, `AboutViewIT`, `HelloFlowIT`, `HelloHillaIT`, and for Flow 25.4+
   `RuntimeScriptsIT` for runtime `@JavaScript` URLs, `PushReconnectIT`, which restarts
@@ -151,10 +158,10 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 - `servlet-mapping` — app at `/` but Vaadin servlet on `/ui/*`; Hilla resources stay on root
   (see comment in `apache-httpd/http/servlet-mapping/vaadin.conf` and Hilla issue #289).
 - `*-push-url` — same scenario but with `VAADIN_PUSH_URL` overridden, requiring an extra
-  WebSocket-only proxy block in the Apache and NGINX trees. Not in `traefik/` or
-  `haproxy/`: both relay an upgrade on whatever path it arrives on, so each config there
-  is identical to its sibling and the identical config is the finding. In `haproxy/` the
-  scenario mounts the sibling's *file*, not a copy of it. Note the public path —
+  WebSocket-only proxy block in the Apache and NGINX trees. Not in `traefik/`, `haproxy/`
+  or `caddy/`: all three relay an upgrade on whatever path it arrives on, so each config
+  there is identical to its sibling and the identical config is the finding. In `haproxy/`
+  and `caddy/` the scenario mounts the sibling's *file*, not a copy of it. Note the public path —
   `VAADIN_PUSH_URL` resolves against the context, so under `custom-context` the browser
   asks for `/app/VAADIN/push`, not `/VAADIN/push`.
 - `load-balancer` — two `vaadin-1` / `vaadin-2` backends, sticky sessions via a `ROUTEID`
@@ -169,26 +176,27 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
   `TOMCAT_JVMROUTE` — the two are independent mechanisms that merely compose.
 - `multiple-root-context*` — two independent apps mapped under different prefixes (no
   `SERVER_SERVLET_CONTEXT_PATH` on the backend): NGINX rewrite rules, `stripPrefix`
-  in `traefik/`, or a per-backend `replace-path` in `haproxy/`. Distinct session cookie
-  *names* are not enough, because both apps issue a `csrfToken` under the same name:
-  Apache, NGINX and HAProxy rescope it by rewriting the `Set-Cookie` path, Traefik cannot
-  and tells each app its public prefix instead.
+  in `traefik/`, a per-backend `replace-path` in `haproxy/`, or `handle_path` in `caddy/`.
+  Distinct session cookie *names* are not enough, because both apps issue a `csrfToken`
+  under the same name: Apache, NGINX, HAProxy and Caddy rescope it by rewriting the
+  `Set-Cookie` path, Traefik cannot and tells each app its public prefix instead.
 - `*-sse` — same scenario but with PUSH over Server-Sent Events
   (`VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS`) through a proxy that cannot upgrade a
   connection. In the Apache and NGINX trees that is achieved by omission: no
   `upgrade=websocket`, no `ws://` worker, no `RewriteRule` on the `Upgrade` header.
-  Traefik and HAProxy have no such omission available — both relay an upgrade with no
-  configuration at all — so those scenarios **refuse** instead: Traefik with a `headers`
-  middleware that deletes the client's `Upgrade` and `Connection` headers, HAProxy with
-  `http-request deny deny_status 501 if { req.hdr(Upgrade) -m found }`. Same semantics,
-  three mechanisms; when adding an `*-sse` scenario, check which one the tree calls for.
+  Traefik, HAProxy and Caddy have no such omission available — all three relay an upgrade
+  with no configuration at all — so those scenarios **refuse** instead: Traefik with a
+  `headers` middleware that deletes the client's `Upgrade` and `Connection` headers, HAProxy
+  with `http-request deny deny_status 501 if { req.hdr(Upgrade) -m found }`, Caddy with
+  `@upgrade header Upgrade *` plus `respond @upgrade 501`. Same semantics, four
+  mechanisms; when adding an `*-sse` scenario, check which one the tree calls for.
   Where a tree refuses, the 501 comes from the proxy rather than from Atmosphere.
   The transport needs no special app image any more: the pom pins 25.3.0-rc1 and
   `my-app/src/main/resources/vaadin-featureflags.properties` enables
   `com.vaadin.experimental.ssePushTransport`, so the default build has it. CI still gates
   these behind the `include_sse` workflow input. Selecting a WebSocket transport in one
   of them fails with a 501 — that is the point of the scenario, not a bug, and it was
-  verified through all three mechanisms.
+  verified through all four mechanisms.
   Hilla `Flux` endpoints cannot work in these either: Hilla push is WebSocket-only
   (`FluxConnection` sets transport and fallbackTransport both to `websocket`), so
   the ITs skip those assertions via `-Dit.websocket=false`.
@@ -200,28 +208,29 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 
 When adding a new scenario, mirror an existing sibling: a `docker-compose.yml` that mounts
 the shared `httpd.conf` (Apache), a template (NGINX), the shared `traefik.yml`
-(Traefik) or the shared `haproxy-base.cfg` (HAProxy), plus the proxy-specific config file.
+(Traefik), the shared `haproxy-base.cfg` (HAProxy) or the shared `Caddyfile` (Caddy), plus
+the proxy-specific config file.
 Then add a row to `scenarios.tsv` and run `scripts/gen-readmes.sh` — the catalogue drives the
 CI matrix, the per-scenario READMEs and `run-scenario.sh`'s picker, and a scenario missing
 from it simply never runs. `scripts/check-catalog.sh` enforces both directions and runs in CI.
 The row's last column is its `tier`: `smoke` if it is the only row in its tree testing that
 mechanism (so every pull request runs it), `full` if a `smoke` row in the same tree would
 almost certainly catch the same breakage (so it runs on the weekly sweep). Most new rows are
-`full` — the smoke tier is 35 of 112 and is meant to stay that size. `check-catalog.sh`
+`full` — the smoke tier is 43 of 135 and is meant to stay that size. `check-catalog.sh`
 rejects a missing or misspelled tier, because that failure is otherwise silent: the row just
 quietly stops running on PRs.
 Reference the proxy image as `${HTTPD_IMAGE:-httpd:2.4.68}` / `${NGINX_IMAGE:-nginx:1.31.6}`
-/ `traefik:${TRAEFIK_VERSION:-v3.7}` / `${HAPROXY_IMAGE:-haproxy:3.2.23}` rather than a
-bare tag, and keep `.github/proxy-images.txt` in step. For Traefik that tag is a floor as
+/ `traefik:${TRAEFIK_VERSION:-v3.7}` / `${HAPROXY_IMAGE:-haproxy:3.2.23}` /
+`${CADDY_IMAGE:-caddy:2.11.9}` rather than a bare tag, and keep `.github/proxy-images.txt` in step. For Traefik that tag is a floor as
 well as a pin: `compress` stalled `text/event-stream` outright before 3.3.5.
 
 ## Continuous integration
 
 `.github/workflows/_scenarios.yml` holds every step (matrix generation, image build,
 readiness waits, tests, summary) and is called by thin per-proxy workflows — `apache.yml`,
-`nginx.yml`, `traefik.yml`, `haproxy.yml` — that carry only triggers and path filters, plus
-`all.yml` for the weekly and manual full-matrix sweep, and `lint.yml`. A new proxy tree needs
-a new caller, not a change to `_scenarios.yml`.
+`nginx.yml`, `traefik.yml`, `haproxy.yml`, `caddy.yml` — that carry only triggers and path
+filters, plus `all.yml` for the weekly and manual full-matrix sweep, and `lint.yml`. A new
+proxy tree needs a new caller, not a change to `_scenarios.yml`.
 
 - **A pull request or push runs the `smoke` tier only; the full catalogue runs weekly from
   `all.yml` and on `workflow_dispatch`.** All 112 scenarios on every event, one job each,
@@ -366,3 +375,30 @@ a new caller, not a change to `_scenarios.yml`.
   so `haproxy/https/*` mounts the repo's `tls/localhost.key` as `localhost.crt.key` and
   no combined PEM is generated. That bind offers HTTP/2 through ALPN by default, with the
   same `curl --http1.1` caveat as Traefik's.
+- A Caddyfile does **not** run directives in the order they are written: each site block
+  is sorted into Caddy's fixed directive order first, and in that order `rewrite` comes
+  before `uri`. `caddy/http/root-to-custom-context-servlet-mapping` must strip `/ui` from
+  the Hilla paths before adding `/app` to everything, so the two sit in a `route` block,
+  which runs as written. Flat, the `@hilla` matcher never matches: every Hilla endpoint
+  call (`/connect`) and Hilla push miss the backend while the Flow views keep working, so
+  only `HelloHillaIT` notices (measured: 2 failures in an otherwise green run).
+  That row is `smoke` for this reason — the only one in any tree whose sibling elsewhere
+  is `full` — and `caddy/http/custom-context` (same file as `root-context`) is `full` so
+  the tree's smoke tier stays one CI job. Keep the two together if either moves.
+- A request that no Caddy handler matches is answered `200` with an empty body, not `404`.
+  The prefix-stripping site blocks end with `handle { respond 404 }` for that reason;
+  keep it when copying one.
+- Caddy's `encode` with no `match` compresses `text/*`, `text/event-stream` included
+  (measured on 2.11.9). The shared `(common)` snippet lists the types instead, the same
+  allowlist as every other tree — don't replace it with a bare `encode gzip`.
+- Caddy repairs responses with `reverse_proxy`'s `header_down <field> <regex> <replacement>`,
+  which applies to every value of the header, so one rule covers every `Set-Cookie`. The
+  HAProxy traps hold here too: anchor on the end of the value (`Path=/app` has no trailing
+  slash), and write `\s`, not `[ ]` — a space splits the regex into two Caddyfile tokens.
+  Caddy at least refuses that config outright instead of loading a different regex.
+- `caddy/https/*` keep automatic HTTPS out of the way without turning it off: the
+  certificate is given with `tls <crt> <key>`, so nothing is requested from an ACME CA,
+  and the site address is `:443` with no host, so no HTTP-to-HTTPS redirect listener is
+  started. The shared Caddyfile sets `servers { protocols h1 h2 }`, because HTTP/3 is on by
+  default and would advertise `Alt-Svc: h3=":443"`, a UDP port the compose file does not
+  publish. `curl --http1.1` for a hand-made upgrade, as with Traefik and HAProxy.

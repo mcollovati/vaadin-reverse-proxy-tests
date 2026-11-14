@@ -1,0 +1,20 @@
+# passthrough.caddyfile, through a proxy that refuses to upgrade a connection.
+#
+# The Apache and NGINX *-sse configs refuse by omission: Upgrade and Connection
+# are hop-by-hop headers neither forwards unless a directive puts them back.
+# Caddy relays an upgrade with no configuration and has no switch to stop it, so
+# the refusal is written out — and the 501 then comes from the proxy rather than
+# from Atmosphere, the same answer HAProxy gives.
+#
+# SSE still works, because it is an ordinary HTTP GET that streams
+# text/event-stream, and the client-to-server messages are POSTs to the same
+# path. Selecting a WebSocket transport here fails, which is the point of the
+# scenario rather than a bug.
+:80 {
+	import common
+
+	@upgrade header Upgrade *
+	respond @upgrade 501
+
+	reverse_proxy vaadin:8080
+}

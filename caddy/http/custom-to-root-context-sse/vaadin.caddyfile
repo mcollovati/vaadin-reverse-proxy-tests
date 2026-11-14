@@ -1,0 +1,25 @@
+# Proxy at /app/, app at root /, PUSH over Server-Sent Events.
+#
+# templates/strip-prefix.caddyfile plus the refusal from
+# templates/passthrough-sse.caddyfile. The refusal sits before the prefix
+# handling on purpose: an upgrade is answered 501 by the proxy wherever it is
+# aimed, and never reaches the backend.
+:80 {
+	import common
+
+	@upgrade header Upgrade *
+	respond @upgrade 501
+
+	redir /app /app/ 308
+
+	handle_path /app/* {
+		reverse_proxy vaadin:8080 {
+			header_down Location ^(https?://[^/]+)?/(.*)$ $1/app/$2
+			header_down Set-Cookie ^(.*;\s*[Pp]ath=)/(;.*)?$ $1/app$2
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

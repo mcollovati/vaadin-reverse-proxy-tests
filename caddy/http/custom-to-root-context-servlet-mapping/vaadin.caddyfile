@@ -1,0 +1,29 @@
+# Proxy at /app/ui/, app at root / with VAADIN_URL_MAPPING=/ui/*.
+#
+# Two translations at once. handle_path removes /app from every request first;
+# inside it the path is what the backend would see, so the Hilla rule is the
+# same one templates/servlet-mapping.caddyfile uses: /HILLA/* and /connect/*
+# live at the context root whatever the Vaadin servlet is mapped to, so they
+# lose /ui as well. See vaadin/hilla#289.
+#
+# No ordering to get right here, unlike the HAProxy sibling: the prefix strip is
+# the handle_path itself and always happens before anything inside it.
+:80 {
+	import common
+
+	redir /app /app/ 308
+
+	handle_path /app/* {
+		@hilla path /ui/HILLA/* /ui/connect/*
+		uri @hilla strip_prefix /ui
+
+		reverse_proxy vaadin:8080 {
+			header_down Location ^(https?://[^/]+)?/(.*)$ $1/app/$2
+			header_down Set-Cookie ^(.*;\s*[Pp]ath=)/(;.*)?$ $1/app$2
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

@@ -1,0 +1,34 @@
+# Two independent apps, both at their own backend's root, published under
+# different prefixes. Neither backend has a context path: the prefix exists only
+# in the public URL, and handle_path removes it.
+#
+# Each app's Location and Set-Cookie are rescoped into its own prefix on the way
+# out, the way NGINX does it with proxy_cookie_path. That is what keeps the two
+# csrfToken cookies apart: both apps issue it under the same name, and without
+# the rewrite each would clobber the other's on /, breaking Hilla for whichever
+# app was visited first. Compare traefik/http/multiple-root-context, which
+# cannot rewrite a response and has to tell each app its prefix instead.
+:80 {
+	import common
+
+	redir /ui1 /ui1/ 308
+	redir /ui2 /ui2/ 308
+
+	handle_path /ui1/* {
+		reverse_proxy vaadin1:8080 {
+			header_down Location ^(https?://[^/]+)?/(.*)$ $1/ui1/$2
+			header_down Set-Cookie ^(.*;\s*[Pp]ath=)/(;.*)?$ $1/ui1$2
+		}
+	}
+
+	handle_path /ui2/* {
+		reverse_proxy vaadin2:8080 {
+			header_down Location ^(https?://[^/]+)?/(.*)$ $1/ui2/$2
+			header_down Set-Cookie ^(.*;\s*[Pp]ath=)/(;.*)?$ $1/ui2$2
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

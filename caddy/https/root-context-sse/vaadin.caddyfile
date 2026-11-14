@@ -1,0 +1,17 @@
+# App at /, Caddy terminates TLS on https://localhost:9443/ and forwards over
+# plain HTTP, PUSH over Server-Sent Events.
+#
+# https/root-context plus the refusal from templates/passthrough-sse.caddyfile.
+# Over HTTP/2 the event stream is one stream on a shared connection rather than
+# a connection of its own, and the refusal is moot there anyway — h2 has no
+# Upgrade header to carry — but a browser that falls back to HTTP/1.1 is still
+# answered 501.
+:443 {
+	tls /etc/caddy/tls/localhost.crt /etc/caddy/tls/localhost.key
+	import common
+
+	@upgrade header Upgrade *
+	respond @upgrade 501
+
+	reverse_proxy vaadin:8080
+}
