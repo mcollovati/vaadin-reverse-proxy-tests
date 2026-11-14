@@ -1,0 +1,16 @@
+# Two backends with sticky sessions, PUSH over Server-Sent Events.
+#
+# load-balancer/vaadin.caddyfile plus the refusal from
+# templates/passthrough-sse.caddyfile. Affinity has to hold both for the
+# EventSource GET and for the separate client-to-server POSTs; the ROUTEID
+# cookie covers both, since the browser sends it on each.
+:80 {
+	import common
+
+	@upgrade header Upgrade *
+	respond @upgrade 501
+
+	reverse_proxy vaadin-1:8080 vaadin-2:8080 {
+		lb_policy cookie ROUTEID
+	}
+}

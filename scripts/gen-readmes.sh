@@ -11,6 +11,9 @@
 #   - HAProxy scenarios inline whatever the docker-compose.yml mounts as
 #     conf.d/10-vaadin.cfg (shared template or scenario-local) and link the
 #     shared haproxy-base.cfg mounted beside it as conf.d/00-base.cfg.
+#   - Caddy scenarios inline whatever the docker-compose.yml mounts as
+#     /etc/caddy/vaadin.caddyfile (shared template or scenario-local) and link
+#     the shared Caddyfile that imports it.
 #
 # Re-running this script is idempotent. Edit descriptions in scenarios.tsv,
 # not in the generated README.md files.
@@ -35,6 +38,8 @@ proxy_label() {
         traefik/labels)         echo "Traefik (Docker labels)" ;;
         haproxy/http)           echo "HAProxy" ;;
         haproxy/https)          echo "HAProxy (HTTPS)" ;;
+        caddy/http)             echo "Caddy" ;;
+        caddy/https)            echo "Caddy (HTTPS)" ;;
         *)                      echo "$1" ;;
     esac
 }
@@ -77,6 +82,21 @@ haproxy_config_for() {
     rel=$(grep -E '^\s*-\s+\S+:/usr/local/etc/haproxy/conf\.d/10-vaadin\.cfg' "$compose" \
           | head -1 \
           | sed -E 's|^\s*-\s+([^:]+):/usr/local/etc/haproxy/conf\.d/10-vaadin\.cfg.*$|\1|')
+    [[ -z $rel ]] && return 1
+    (cd "$scenario_dir" && cd "$(dirname "$rel")" && echo "$PWD/$(basename "$rel")")
+}
+
+# Resolve the path that docker-compose.yml mounts as the scenario's own Caddy
+# site block (/etc/caddy/vaadin.caddyfile), relative to the scenario dir. As in
+# HAProxy's tree, it is a shared file under caddy/templates/ for the families
+# that collapse onto one, and a scenario-local vaadin.caddyfile otherwise.
+caddy_config_for() {
+    local scenario_dir="$1"
+    local compose="$scenario_dir/docker-compose.yml"
+    local rel
+    rel=$(grep -E '^\s*-\s+\S+:/etc/caddy/vaadin\.caddyfile' "$compose" \
+          | head -1 \
+          | sed -E 's|^\s*-\s+([^:]+):/etc/caddy/vaadin\.caddyfile.*$|\1|')
     [[ -z $rel ]] && return 1
     (cd "$scenario_dir" && cd "$(dirname "$rel")" && echo "$PWD/$(basename "$rel")")
 }
@@ -174,6 +194,25 @@ write_readme() {
                     echo "it as \`conf.d/00-base.cfg\`. Base and scenario only parse as a pair."
                 else
                     echo "_No HAProxy config mount detected in docker-compose.yml._"
+                fi
+                ;;
+            caddy/*)
+                local site
+                if site=$(caddy_config_for "$scenario_dir"); then
+                    local site_rel="${site#"$repo_root"/}"
+                    echo "Caddy site block (\`$site_rel\`), mounted as"
+                    echo "\`/etc/caddy/vaadin.caddyfile\`:"
+                    echo
+                    echo '```caddyfile'
+                    cat_with_trailing_newline "$site"
+                    echo '```'
+                    echo
+                    echo "The global options and the \`common\` snippet this file imports (the"
+                    echo "access log and the compression allowlist) come from the shared"
+                    echo "[Caddyfile](../../Caddyfile), mounted read-only over the image's own"
+                    echo "\`/etc/caddy/Caddyfile\`. It imports this file, so the two only load as a pair."
+                else
+                    echo "_No Caddy site block mount detected in docker-compose.yml._"
                 fi
                 ;;
         esac

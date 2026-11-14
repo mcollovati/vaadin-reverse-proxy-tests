@@ -1,0 +1,27 @@
+# Proxy at /ui/, app on the /app context with VAADIN_URL_MAPPING=/ui/*.
+#
+# The Hilla paths lose the servlet mapping and gain the context prefix
+# (/ui/HILLA/x -> /app/HILLA/x); everything else only gains /app. See
+# vaadin/hilla#289.
+#
+# The route block is load-bearing. A Caddyfile does not run directives in the
+# order they are written but in Caddy's own fixed directive order, and in that
+# order `rewrite` comes before `uri`. Written out flat, the /app prefix would be
+# added first, the @hilla matcher would then look at /app/ui/HILLA/... and never
+# match. Every Hilla call then goes to /app/ui/connect/... instead of
+# /app/connect/...: measured, HelloHillaIT fails while the Flow views keep
+# working. Inside `route` the directives run as written.
+:80 {
+	import common
+
+	@hilla path /ui/HILLA/* /ui/connect/*
+	route {
+		uri @hilla strip_prefix /ui
+		rewrite * /app{uri}
+	}
+
+	reverse_proxy vaadin:8080 {
+		header_down Location ^(https?://[^/]+)?/app(/.*)$ $1$2
+		header_down Set-Cookie ^(.*;\s*[Pp]ath=)/app(;.*)?$ $1/$2
+	}
+}

@@ -14,7 +14,7 @@ updates:
   # proxy. Never auto-merge these; let the per-proxy workflows report on them.
   #
   # Which is also why they are the only ungrouped bumps here. Every PR touching
-  # my-app/ starts all four proxy workflows, so five separate PRs in one week
+  # my-app/ starts all five proxy workflows, so five separate PRs in one week
   # meant five sweeps. A Vaadin bump is worth its own; a Spring Boot or plugin
   # bump is a chore that only has to be shown not to break anything, and one PR
   # can show that for the lot. If that grouped PR goes red, split it by hand.
@@ -56,6 +56,7 @@ updates:
       - "/nginx/**"
       - "/traefik/**"
       - "/haproxy/**"
+      - "/caddy/**"
     schedule:
       interval: "weekly"
     groups:
@@ -65,3 +66,4 @@ updates:
           - "nginx"
           - "traefik"
           - "haproxy"
+          - "caddy"

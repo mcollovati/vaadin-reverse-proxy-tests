@@ -1,0 +1,31 @@
+# Proxy at /app/, app at root /. handle_path strips the prefix on the way in;
+# two header_down regexes put it back on the way out.
+#
+# The two response headers are the only things the backend says about its own
+# location, and Caddy repairs them with the same tool for both: there is no
+# ProxyPassReverse and no proxy_cookie_path, but header_down applies a regex to
+# every value of a header, so one rule rescopes JSESSIONID and csrfToken alike.
+:80 {
+	import common
+
+	# NGINX answers the bare prefix with a redirect to /app/; this does the same.
+	redir /app /app/ 308
+
+	handle_path /app/* {
+		reverse_proxy vaadin:8080 {
+			header_down Location ^(https?://[^/]+)?/(.*)$ $1/app/$2
+			# Anchored on the end of the value rather than on what follows the
+			# path: Tomcat writes `Path=/; HttpOnly`, and a regex that expects
+			# another path segment after the slash matches nothing at all —
+			# which from the outside looks exactly like a rule that was not
+			# needed.
+			header_down Set-Cookie ^(.*;\s*[Pp]ath=)/(;.*)?$ $1/app$2
+		}
+	}
+
+	# A request no handler matches gets an empty 200 from Caddy, not a 404.
+	# NGINX has nothing outside its location, so neither does this.
+	handle {
+		respond 404
+	}
+}

@@ -1,0 +1,58 @@
+# Shared by every Caddy scenario and mounted read-only over the image's own
+# /etc/caddy/Caddyfile, so the image's default command loads it unchanged. The
+# split is Apache's: this file carries what is the same everywhere, and imports
+# the scenario's site block, which each scenario mounts as
+# /etc/caddy/vaadin.caddyfile.
+#
+# Nothing here configures WebSocket upgrades, because Caddy has no switch for
+# them: reverse_proxy upgrades whenever the client asks and proxies plain HTTP
+# otherwise. That is why the *-push-url scenarios need no rule of their own, and
+# why the *-sse ones have to refuse the upgrade explicitly.
+#
+# No timeouts either, unlike ProxyTimeout 300 (Apache) and proxy_read_timeout
+# 300s (NGINX). Caddy sets no read, write or response-header timeout on a
+# proxied request by default; the server's idle_timeout (5m) applies only to a
+# keep-alive connection waiting for its next request, and an upgraded connection
+# is not one. Vaadin's PUSH heartbeat is every 60s regardless.
+{
+	servers {
+		# Off: HTTP/3 is on by default for every TLS site, and the https
+		# scenarios would then advertise `Alt-Svc: h3=":443"` — a UDP port the
+		# compose file does not publish, on a host port (443) the scenario does
+		# not use. h1 and h2 match what the Traefik and HAProxy TLS siblings
+		# serve.
+		protocols h1 h2
+	}
+}
+
+# Every site block imports this. Two things a scenario should not have to repeat:
+#
+# - An access log, the counterpart of HAProxy's `option httplog` and Traefik's
+#   accessLog. Caddy logs no requests unless a site asks for it.
+#
+# - Compression, the way a real deployment has it — but never over a streamed
+#   response, and not over media. Caddy's encode compresses a built-in list of
+#   types when given no `match`, and that list includes text/*: measured on
+#   2.11.9, /sse-probe comes back `Content-Encoding: gzip`. It still flushes per
+#   event, so nothing stalls, but it holds a compressor open for the life of
+#   every push connection and shrinks Atmosphere's SSE padding, whose whole job
+#   is to force a buffering intermediary to flush. So the types are listed: the
+#   same allowlist as gzip_types (NGINX), `compression type` (HAProxy) and
+#   includedContentTypes (Traefik). text/event-stream (SSE push), text/plain
+#   (streaming and long polling) and audio/video stay out by not being named.
+(common) {
+	log
+	encode {
+		gzip
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type application/javascript*
+			header Content-Type application/json*
+			header Content-Type application/xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+}
+
+import /etc/caddy/vaadin.caddyfile

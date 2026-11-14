@@ -1,0 +1,18 @@
+# App at / with the Vaadin servlet on /ui/*, PUSH over Server-Sent Events.
+#
+# templates/servlet-mapping.caddyfile plus the refusal from
+# templates/passthrough-sse.caddyfile. The Hilla rule still strips /ui so the
+# browser-callables under /connect keep working, but Hilla push cannot work at
+# all here: FluxConnection is WebSocket-only with no fallback, and the upgrade
+# it asks for is the one this proxy refuses.
+:80 {
+	import common
+
+	@upgrade header Upgrade *
+	respond @upgrade 501
+
+	@hilla path /ui/HILLA/* /ui/connect/*
+	uri @hilla strip_prefix /ui
+
+	reverse_proxy vaadin:8080
+}
