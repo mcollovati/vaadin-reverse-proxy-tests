@@ -1,0 +1,58 @@
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+# Compression on, the way a real deployment has it — but never over a streamed
+# response: text/event-stream (SSE push) and text/plain (streaming and long
+# polling) are deliberately absent from gzip_types. text/html is always
+# compressed and cannot be taken off the list.
+gzip              on;
+gzip_proxied      any;
+gzip_types        text/css application/javascript application/json
+                  application/xml image/svg+xml;
+
+server {
+
+    listen       80;
+    server_name  localhost;
+
+    location ${VAADIN_PATH} {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        # Vaadin PUSH streams its response. Without an HTTP/1.1 upstream
+        # and buffering turned off, nginx holds each SSE event until its
+        # buffer fills; the timeout covers the 60s PUSH heartbeat.
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
+        proxy_pass http://vaadin:8080${VAADIN_PATH};
+        proxy_redirect $scheme://$host${VAADIN_PATH} $scheme://$http_host${VAADIN_PATH};
+    }
+
+    # The push paths, and only they, may upgrade: the catch-all above sets no
+    # Upgrade/Connection headers, the opposite of default.conf.template. Push
+    # sits at its default location under the context, ${VAADIN_PATH}VAADIN/push
+    # (VAADIN_PUSH_URL cannot move it: ignored since Flow 23, issue #43). The
+    # regex is anchored so it matches those two paths and nothing else.
+    location ~ "^${VAADIN_PATH}(VAADIN|HILLA)/push$" {
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+        proxy_set_header        Upgrade $http_upgrade;
+        proxy_set_header        Connection $connection_upgrade;
+
+        # Vaadin PUSH streams its response. Without an HTTP/1.1 upstream
+        # and buffering turned off, nginx holds each SSE event until its
+        # buffer fills; the timeout covers the 60s PUSH heartbeat.
+        proxy_http_version      1.1;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+
+        proxy_pass http://vaadin:8080;
+    }
+}

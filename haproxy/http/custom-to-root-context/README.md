@@ -14,8 +14,7 @@ HAProxy config (`haproxy/templates/strip-prefix.cfg`), mounted as
 
 ```haproxy
 # Proxy at /app/, app at the backend root: the public URL carries a prefix the
-# backend knows nothing about. Shared by custom-to-root-context and
-# custom-to-root-context-push-url, which differ only in VAADIN_PUSH_URL.
+# backend knows nothing about. Used by custom-to-root-context.
 #
 # Both halves of the translation are here. On the way in the prefix is stripped;
 # on the way out the two things the backend says about its own location — the

@@ -14,19 +14,16 @@ HAProxy config (`haproxy/templates/passthrough.cfg`), mounted as
 
 ```haproxy
 # Pass everything through untouched: the public URL and the backend URL are the
-# same. Shared by four scenarios, because HAProxy has no <Location> / location
-# construct — a frontend accepts every path and a backend carries it — so
-# neither a context path nor a relocated PUSH endpoint needs a rule:
+# same. Shared by two scenarios, because HAProxy has no <Location> / location
+# construct — a frontend accepts every path and a backend carries it — so a
+# context path needs no rule:
 #
-#   root-context             app at /,     proxy at /
-#   root-context-push-url    the same, with VAADIN_PUSH_URL=/VAADIN/push
-#   custom-context           app on /app,  proxy preserves the path
-#   custom-context-push-url  the same, with VAADIN_PUSH_URL=/VAADIN/push
+#   root-context     app at /,     proxy at /
+#   custom-context   app on /app,  proxy preserves the path
 #
-# The Apache and NGINX siblings need a second block for the relocated push URL
-# only because that is where `upgrade=websocket` / the Upgrade header lived.
-# Here an upgrade is relayed on whatever path it arrives on, so this file is
-# literally the same file for all four — not a copy of it.
+# Nor does push. An upgrade is relayed on whatever path it arrives on, so there
+# is nothing like the Apache and NGINX *-push-location scenarios, which give the
+# push paths an upgrade-capable block of their own, to write here.
 frontend vaadin-in from vaadin-front
     bind :80
     default_backend vaadin-app

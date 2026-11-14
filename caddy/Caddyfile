@@ -6,8 +6,10 @@
 #
 # Nothing here configures WebSocket upgrades, because Caddy has no switch for
 # them: reverse_proxy upgrades whenever the client asks and proxies plain HTTP
-# otherwise. That is why the *-push-url scenarios need no rule of their own, and
-# why the *-sse ones have to refuse the upgrade explicitly.
+# otherwise. That is why this tree has no *-push-location scenarios (the
+# Apache and NGINX ones give the push paths an upgrade-capable block of their
+# own, which here would be identical to the sibling), and why the *-sse ones
+# have to refuse the upgrade explicitly.
 #
 # No timeouts either, unlike ProxyTimeout 300 (Apache) and proxy_read_timeout
 # 300s (NGINX). Caddy sets no read, write or response-header timeout on a

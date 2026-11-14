@@ -14,8 +14,7 @@ HAProxy config (`haproxy/templates/add-prefix.cfg`), mounted as
 
 ```haproxy
 # Proxy at /, app on the /app context: the public URL stays at the root and the
-# proxy adds the prefix when forwarding. Shared by root-to-custom-context and
-# root-to-custom-context-push-url, which differ only in VAADIN_PUSH_URL.
+# proxy adds the prefix when forwarding. Used by root-to-custom-context.
 #
 # The mirror image of strip-prefix.cfg, and the direction that costs the most
 # behind a proxy which cannot rewrite a response: everything the backend emits
