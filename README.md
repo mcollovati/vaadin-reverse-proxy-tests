@@ -28,10 +28,10 @@ configuration files for the following scenarios, each one in its own
 subdirectory:
 
 * Vaadin application on ROOT context
-* Vaadin application on ROOT context with custom PUSH url (`/VAADIN/push`)
 * Vaadin application on custom servlet mapping (`/ui/*`)
-* Vaadin application on custom servlet mapping (`/ui/*`) with custom PUSH
-  url (`/VAADIN/push`)
+* Apache and NGINX only: the push paths in an upgrade-capable block of their
+  own, with a plain-HTTP catch-all (the `*-push-location` directories — see
+  [Push is never relocated](#push-is-never-relocated))
 * Two Vaadin application on ROOT context mapped by the reverse proxy with 
   different prefixes (`/ui1/` and `/ui2`)
 * Any of the above with PUSH over Server-Sent Events instead of WebSocket,
@@ -59,44 +59,42 @@ The scenarios are replicated for the following reverse proxy configuration:
 ├── apache-httpd
 │   ├── ajp
 │   │   ├── custom-context
-│   │   ├── custom-context-push-url
+│   │   ├── custom-context-push-location
 │   │   ├── custom-to-root-context
-│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-push-location
 │   │   ├── custom-to-root-context-servlet-mapping
 │   │   ├── custom-to-root-context-servlet-mapping-sse
 │   │   ├── load-balancer
 │   │   ├── root-context
-│   │   ├── root-context-push-url
-│   │   ├── root-context-push-url-sse
+│   │   ├── root-context-push-location
 │   │   ├── root-context-sse
 │   │   ├── root-to-custom-context
-│   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-push-location
 │   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── servlet-mapping
-│   │   └── servlet-mapping-push-url
+│   │   └── servlet-mapping-push-location
 │   ├── ajp-https
 │   │   └── root-context
 │   ├── http
 │   │   ├── custom-context
-│   │   ├── custom-context-push-url
+│   │   ├── custom-context-push-location
 │   │   ├── custom-context-sse
 │   │   ├── custom-to-root-context
-│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-push-location
 │   │   ├── custom-to-root-context-servlet-mapping
 │   │   ├── custom-to-root-context-sse
 │   │   ├── load-balancer
 │   │   ├── load-balancer-sse
 │   │   ├── root-context
 │   │   ├── root-context-legacy
-│   │   ├── root-context-push-url
-│   │   ├── root-context-push-url-sse
+│   │   ├── root-context-push-location
 │   │   ├── root-context-sse
 │   │   ├── root-to-custom-context
-│   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-push-location
 │   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── root-to-custom-context-sse
 │   │   ├── servlet-mapping
-│   │   ├── servlet-mapping-push-url
+│   │   ├── servlet-mapping-push-location
 │   │   └── servlet-mapping-sse
 │   └── https
 │       ├── root-context
@@ -104,25 +102,23 @@ The scenarios are replicated for the following reverse proxy configuration:
 ├── nginx
 │   ├── http
 │   │   ├── custom-context
-│   │   ├── custom-context-push-url
+│   │   ├── custom-context-push-location
 │   │   ├── custom-context-sse
 │   │   ├── custom-to-root-context
-│   │   ├── custom-to-root-context-push-url
+│   │   ├── custom-to-root-context-push-location
 │   │   ├── custom-to-root-context-servlet-mapping
 │   │   ├── custom-to-root-context-sse
 │   │   ├── load-balancer
 │   │   ├── load-balancer-sse
 │   │   ├── multiple-root-context
 │   │   ├── root-context
-│   │   ├── root-context-push-url
-│   │   ├── root-context-push-url-sse
+│   │   ├── root-context-push-location
 │   │   ├── root-context-sse
 │   │   ├── root-to-custom-context
-│   │   ├── root-to-custom-context-push-url
+│   │   ├── root-to-custom-context-push-location
 │   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── root-to-custom-context-sse
 │   │   ├── servlet-mapping
-│   │   ├── servlet-mapping-push-url
 │   │   └── servlet-mapping-sse
 │   └── https
 │       ├── root-context
@@ -131,26 +127,20 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   ├── traefik.yml (shared static config)
 │   ├── http
 │   │   ├── custom-context
-│   │   ├── custom-context-push-url
 │   │   ├── custom-context-sse
 │   │   ├── custom-to-root-context
 │   │   ├── custom-to-root-context-forwarded-prefix
-│   │   ├── custom-to-root-context-push-url
 │   │   ├── custom-to-root-context-servlet-mapping
 │   │   ├── custom-to-root-context-sse
 │   │   ├── load-balancer
 │   │   ├── load-balancer-sse
 │   │   ├── multiple-root-context
 │   │   ├── root-context
-│   │   ├── root-context-push-url
-│   │   ├── root-context-push-url-sse
 │   │   ├── root-context-sse
 │   │   ├── root-to-custom-context
-│   │   ├── root-to-custom-context-push-url
 │   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── root-to-custom-context-sse
 │   │   ├── servlet-mapping
-│   │   ├── servlet-mapping-push-url
 │   │   └── servlet-mapping-sse
 │   ├── https
 │   │   ├── root-context
@@ -167,10 +157,8 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   └── strip-prefix.cfg
 │   ├── http
 │   │   ├── custom-context
-│   │   ├── custom-context-push-url
 │   │   ├── custom-context-sse
 │   │   ├── custom-to-root-context
-│   │   ├── custom-to-root-context-push-url
 │   │   ├── custom-to-root-context-servlet-mapping
 │   │   ├── custom-to-root-context-sse
 │   │   ├── load-balancer
@@ -178,15 +166,11 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   ├── load-balancer-sse
 │   │   ├── multiple-root-context
 │   │   ├── root-context
-│   │   ├── root-context-push-url
-│   │   ├── root-context-push-url-sse
 │   │   ├── root-context-sse
 │   │   ├── root-to-custom-context
-│   │   ├── root-to-custom-context-push-url
 │   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── root-to-custom-context-sse
 │   │   ├── servlet-mapping
-│   │   ├── servlet-mapping-push-url
 │   │   └── servlet-mapping-sse
 │   └── https
 │       ├── root-context
@@ -201,25 +185,19 @@ The scenarios are replicated for the following reverse proxy configuration:
 │   │   └── strip-prefix.caddyfile
 │   ├── http
 │   │   ├── custom-context
-│   │   ├── custom-context-push-url
 │   │   ├── custom-context-sse
 │   │   ├── custom-to-root-context
-│   │   ├── custom-to-root-context-push-url
 │   │   ├── custom-to-root-context-servlet-mapping
 │   │   ├── custom-to-root-context-sse
 │   │   ├── load-balancer
 │   │   ├── load-balancer-sse
 │   │   ├── multiple-root-context
 │   │   ├── root-context
-│   │   ├── root-context-push-url
-│   │   ├── root-context-push-url-sse
 │   │   ├── root-context-sse
 │   │   ├── root-to-custom-context
-│   │   ├── root-to-custom-context-push-url
 │   │   ├── root-to-custom-context-servlet-mapping
 │   │   ├── root-to-custom-context-sse
 │   │   ├── servlet-mapping
-│   │   ├── servlet-mapping-push-url
 │   │   └── servlet-mapping-sse
 │   └── https
 │       ├── root-context
@@ -386,7 +364,7 @@ dropping a scenario from the catalogue:
 **The `tier` column in `scenarios.tsv`.** A pull request or a push runs the
 `smoke` tier — one scenario per distinct *mechanism* in a tree: rewrite
 direction, servlet mapping, load balancing, TLS, a transport that cannot
-upgrade. 43 rows of 135. The other 92 are variations whose breakage a smoke row
+upgrade. 43 rows of 113. The other 70 are variations whose breakage a smoke row
 in the same tree would almost certainly catch too, and they run on the weekly
 sweep and on `workflow_dispatch`. When adding a scenario that tests something no
 other row in its tree does, mark it `smoke`.
@@ -764,6 +742,39 @@ sits clear of that edge.
 streaming response such as Server-Sent Events. Every AJP worker in this repo
 therefore carries `flushpackets=on`.
 
+## Push is never relocated
+
+Vaadin push is always at `<context path><servlet mapping>/VAADIN/push`: e.g.
+`/VAADIN/push`, `/app/VAADIN/push` or `/app/ui/VAADIN/push`. Hilla push is at
+`<context path>/HILLA/push` whatever the mapping is. No setting moves either one.
+
+* `VAADIN_PUSH_URL`, Flow's old `pushURL` init parameter, has been ignored
+  since Flow 23, where `pushServletMapping` replaced it. This repo used to set
+  it in a whole `*-push-url` family, which was believed to move the endpoint. It
+  never did, so most of those scenarios were exact duplicates of their sibling
+  and were deleted ([#43](https://github.com/mcollovati/vaadin-reverse-proxy-tests/issues/43)).
+* `VAADIN_PUSH_SERVLET_MAPPING` only changes the URL the *client* is sent to.
+  Spring Boot keeps the WebSocket endpoint at `<servlet mapping>/VAADIN/push`,
+  so with `/app` and `/ui/*`, a value of `/push/` sends the browser to
+  `/app/push/VAADIN/push`, which answers 404 to an upgrade.
+
+Both were checked at runtime on Flow 25.4.0-alpha5; the measurements are in
+[#20](https://github.com/mcollovati/vaadin-reverse-proxy-tests/issues/20#issuecomment-6878914409).
+
+What survived of that family is the `*-push-location` scenarios, in
+`apache-httpd/http`, `apache-httpd/ajp` and `nginx/http`. Each one has the same
+app as its sibling but routes push the other way round:
+
+| tree | sibling | `*-push-location` |
+|---|---|---|
+| Apache HTTP | `upgrade=websocket` on the catch-all | `upgrade=websocket` only in the push `<Location>` blocks; the catch-all is plain HTTP |
+| Apache AJP | server-scope `RewriteRule` sends every upgrade to a `ws://` worker | push `<Location>` blocks go over HTTP with `upgrade=websocket`, everything else over AJP |
+| NGINX | `Upgrade`/`Connection` headers on the catch-all | headers only in an anchored regex location for the push paths |
+
+Traefik, HAProxy and Caddy have no `*-push-location` scenarios. They relay an
+upgrade on whatever path it arrives on, with no configuration to scope, so the
+config would be the sibling's again.
+
 ## nginx Notes
 
 By default, the websocket connection will be closed if the proxied server does
@@ -816,12 +827,11 @@ otherwise. Nothing in this tree configures that — compare Apache's
 
 Two consequences:
 
-* The `*-push-url` scenarios need no rule for the relocated endpoint, so each
-  one's config is identical to its sibling. The scenarios are kept anyway: they
-  still exercise `VAADIN_PUSH_URL` end to end, and the identical config is the
-  finding. Note that `VAADIN_PUSH_URL` is resolved against the **context**, so
-  under `custom-context` the browser asks for `/app/VAADIN/push` rather than
-  `/VAADIN/push`.
+* There is nothing to scope, so the tree has no `*-push-location` scenarios.
+  Their Apache and NGINX counterparts allow the upgrade only in a block of its
+  own for the push paths (see
+  [Push is never relocated](#push-is-never-relocated)); here that would be the
+  sibling's config again.
 * The `*-sse` scenarios cannot simply omit upgrade support the way their Apache
   and NGINX siblings do. They have to refuse it, with a `headers` middleware
   that deletes the client's `Upgrade` and `Connection` headers (an empty value
@@ -945,26 +955,26 @@ app:
 HAPROXY_IMAGE=haproxy:3.1 docker compose up
 ```
 
-### 24 scenarios, 16 config files
+### 18 scenarios, 16 config files
 
-Five files under [`haproxy/templates/`](./haproxy/templates) are mounted by
-more than one scenario, and that sharing is a finding rather than a convenience:
+Five files live under [`haproxy/templates/`](./haproxy/templates). Two of them
+are mounted by more than one scenario, and that sharing is a finding rather
+than a convenience:
 
 | file | mounted by |
 |---|---|
-| `passthrough.cfg` | `root-context`, `root-context-push-url`, `custom-context`, `custom-context-push-url` |
-| `passthrough-sse.cfg` | `root-context-sse`, `root-context-push-url-sse`, `custom-context-sse` |
-| `strip-prefix.cfg` | `custom-to-root-context`, `custom-to-root-context-push-url` |
-| `add-prefix.cfg` | `root-to-custom-context`, `root-to-custom-context-push-url` |
-| `servlet-mapping.cfg` | `servlet-mapping`, `servlet-mapping-push-url` |
+| `passthrough.cfg` | `root-context`, `custom-context` |
+| `passthrough-sse.cfg` | `root-context-sse`, `custom-context-sse` |
+| `strip-prefix.cfg` | `custom-to-root-context` |
+| `add-prefix.cfg` | `root-to-custom-context` |
+| `servlet-mapping.cfg` | `servlet-mapping` |
 
-A context path needs no rule because nothing here is scoped to a path, and a
-relocated PUSH endpoint needs none because an HTTP/1.1 upgrade is relayed on
-whichever path the client asks to upgrade. The Apache and NGINX siblings each
-carry a second block for `VAADIN_PUSH_URL` only because that is where
-`upgrade=websocket` / the `Upgrade` header lived. Note that `VAADIN_PUSH_URL`
-is resolved against the **context**, so under `custom-context` the browser asks
-for `/app/VAADIN/push`.
+A context path needs no rule because nothing here is scoped to a path. Push
+needs none either, because an HTTP/1.1 upgrade is relayed on whichever path the
+client asks to upgrade. That is also why there are no `*-push-location`
+scenarios here: the Apache and NGINX ones give the push paths an
+upgrade-capable block of their own, and in this tree that would be the
+sibling's config again.
 
 ### The `*-sse` scenarios deny the upgrade, they do not omit it
 
@@ -1082,22 +1092,23 @@ load as a pair. Pin the version with `CADDY_IMAGE`:
 CADDY_IMAGE=caddy:2.10.2 docker compose up
 ```
 
-### 23 scenarios, 15 config files
+### 17 scenarios, 15 config files
 
-The tree ports the 21 `nginx/http` scenarios and the 2 `https` ones. As in
-`haproxy/`, five files under [`caddy/templates/`](./caddy/templates) are
-mounted by more than one scenario:
+The tree ports 15 of the `nginx/http` scenarios and the 2 `https` ones. The
+four NGINX `*-push-location` scenarios have no Caddy counterpart. As in
+`haproxy/`, five files live under [`caddy/templates/`](./caddy/templates), and
+two of them are mounted by more than one scenario:
 
 | file | mounted by |
 |---|---|
-| `passthrough.caddyfile` | `root-context`, `root-context-push-url`, `custom-context`, `custom-context-push-url` |
-| `passthrough-sse.caddyfile` | `root-context-sse`, `root-context-push-url-sse`, `custom-context-sse` |
-| `strip-prefix.caddyfile` | `custom-to-root-context`, `custom-to-root-context-push-url` |
-| `add-prefix.caddyfile` | `root-to-custom-context`, `root-to-custom-context-push-url` |
-| `servlet-mapping.caddyfile` | `servlet-mapping`, `servlet-mapping-push-url` |
+| `passthrough.caddyfile` | `root-context`, `custom-context` |
+| `passthrough-sse.caddyfile` | `root-context-sse`, `custom-context-sse` |
+| `strip-prefix.caddyfile` | `custom-to-root-context` |
+| `add-prefix.caddyfile` | `root-to-custom-context` |
+| `servlet-mapping.caddyfile` | `servlet-mapping` |
 
 `reverse_proxy` upgrades a connection whenever the client asks, on any path, so
-neither a context path nor a relocated PUSH endpoint needs a rule of its own.
+neither a context path nor push needs a rule of its own.
 
 ### The `*-sse` scenarios refuse the upgrade with 501
 

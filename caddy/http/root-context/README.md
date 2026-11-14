@@ -18,8 +18,8 @@ Caddy site block (`caddy/templates/passthrough.caddyfile`), mounted as
 #
 # There is no WebSocket configuration because Caddy has none to give:
 # reverse_proxy upgrades on whatever path the client asks. That is why this one
-# file serves root-context and custom-context (the backend's context path is
-# simply passed through) and both of their *-push-url variants. Compare Apache's
+# file serves both root-context and custom-context (the backend's context path
+# is simply passed through). Compare Apache's
 # `upgrade=websocket` and NGINX's `map $http_upgrade` + Upgrade/Connection
 # headers, both of which this file does without.
 #

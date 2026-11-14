@@ -13,10 +13,8 @@ HAProxy config (`haproxy/templates/servlet-mapping.cfg`), mounted as
 `conf.d/10-vaadin.cfg`:
 
 ```haproxy
-# App at /, with the Vaadin servlet bound to /ui/* instead of the root. Shared
-# by servlet-mapping and servlet-mapping-push-url: the relocated push URL
-# resolves against the context, which here is the root, so the catch-all
-# already carries it.
+# App at /, with the Vaadin servlet bound to /ui/* instead of the root. Used by
+# servlet-mapping.
 #
 # Hilla does not follow vaadin.url-mapping: /HILLA/* (its push endpoint) and
 # /connect/* (browser-callables) stay at the context root whatever the Vaadin

@@ -9,7 +9,7 @@ scenarios that exercise a single Vaadin/Spring Boot test app (`my-app/`) sitting
 several reverse-proxy configurations (Apache HTTPD over HTTP and AJP, NGINX over HTTP,
 Traefik over HTTP, HAProxy over HTTP, Caddy over HTTP).
 The goal is to verify that Vaadin Flow + Hilla works correctly through each proxy
-configuration — context paths, custom servlet mappings, custom PUSH URLs, load balancing,
+configuration — context paths, custom servlet mappings, dedicated push blocks, load balancing,
 multi-app routing. README.md is the canonical map of scenarios.
 
 ## Repository layout
@@ -110,7 +110,12 @@ Java code is the same image everywhere. Key knobs:
 - `VAADIN_URL_MAPPING=/ui/*` — Vaadin servlet mapping (used by `servlet-mapping*`). When
   set, `Application.publicImagesAliasFilter` forwards `/<mapping>/icons/...` and
   `/<mapping>/images/...` back to the unmapped path so static assets resolve.
-- `VAADIN_PUSH_URL=/VAADIN/push` — overrides the default push endpoint (used by `*-push-url`).
+- **There is no knob that relocates push.** `VAADIN_PUSH_URL` (Flow's old `pushURL` init
+  parameter) has been ignored since Flow 23 and no scenario sets it any more. Push is
+  always at `<context><url-mapping>/VAADIN/push` (e.g. `/app/ui/VAADIN/push`). Setting
+  `VAADIN_PUSH_SERVLET_MAPPING` does not help either: Spring Boot keeps the WebSocket
+  endpoint at `<url-mapping>/VAADIN/push`, so the client is sent to a path that answers 404.
+  Verified at runtime on 25.4.0-alpha5; evidence in issues #20 and #43.
 - `VAADIN_PUSH_TRANSPORT=SERVER_SENT_EVENTS` — `PushTransportConfigurer` sets both the
   transport and the *fallback* transport on every UI (used by `*-sse`). Setting the
   fallback is the point: otherwise Atmosphere silently degrades to long polling when a
@@ -157,13 +162,16 @@ The `*-to-*-context` names follow an **X-to-Y = proxy at X, backend at Y** patte
 - `custom-to-root-context` — proxy at `/app/`, app at root `/` (the proxy strips the `/app` prefix before forwarding to the backend).
 - `servlet-mapping` — app at `/` but Vaadin servlet on `/ui/*`; Hilla resources stay on root
   (see comment in `apache-httpd/http/servlet-mapping/vaadin.conf` and Hilla issue #289).
-- `*-push-url` — same scenario but with `VAADIN_PUSH_URL` overridden, requiring an extra
-  WebSocket-only proxy block in the Apache and NGINX trees. Not in `traefik/`, `haproxy/`
-  or `caddy/`: all three relay an upgrade on whatever path it arrives on, so each config
-  there is identical to its sibling and the identical config is the finding. In `haproxy/`
-  and `caddy/` the scenario mounts the sibling's *file*, not a copy of it. Note the public path —
-  `VAADIN_PUSH_URL` resolves against the context, so under `custom-context` the browser
-  asks for `/app/VAADIN/push`, not `/VAADIN/push`.
+- `*-push-location` (Apache and NGINX only) — same app as the sibling, but the proxy
+  allows an upgrade on the push paths only: `/VAADIN/push` and `/HILLA/push`, prefixed
+  as the scenario needs, get an upgrade-capable block of their own, and the catch-all is
+  plain HTTP. The sibling does it the other way round. In `apache-httpd/ajp/` the push
+  blocks also carry push over HTTP while everything else goes over AJP, where the sibling
+  uses a server-scope `RewriteRule` to `ws://`. Push is at its default location; nothing
+  relocates it (see the push knob above). Not in `traefik/`, `haproxy/` or `caddy/`:
+  all three relay an upgrade on whatever path it arrives on, so the config would be the
+  sibling's again. This family used to be `*-push-url`, which set `VAADIN_PUSH_URL` and
+  was believed to move the endpoint. Its pure duplicates were deleted in #43.
 - `load-balancer` — two `vaadin-1` / `vaadin-2` backends, sticky sessions via a `ROUTEID`
   cookie that the proxy synthesizes itself in every tree. `TOMCAT_JVMROUTE` exists in
   `my-app` but no scenario currently sets it: Apache's balancer reads its own route id
@@ -216,7 +224,7 @@ from it simply never runs. `scripts/check-catalog.sh` enforces both directions a
 The row's last column is its `tier`: `smoke` if it is the only row in its tree testing that
 mechanism (so every pull request runs it), `full` if a `smoke` row in the same tree would
 almost certainly catch the same breakage (so it runs on the weekly sweep). Most new rows are
-`full` — the smoke tier is 43 of 135 and is meant to stay that size. `check-catalog.sh`
+`full` — the smoke tier is 43 of 113 and is meant to stay that size. `check-catalog.sh`
 rejects a missing or misspelled tier, because that failure is otherwise silent: the row just
 quietly stops running on PRs.
 Reference the proxy image as `${HTTPD_IMAGE:-httpd:2.4.68}` / `${NGINX_IMAGE:-nginx:1.31.6}`
@@ -346,9 +354,10 @@ proxy tree needs a new caller, not a change to `_scenarios.yml`.
   to accept a connection before any request reaches the proxy.
 - HAProxy has no `<Location>` / `location` construct: a frontend accepts every path and a
   backend carries every request it was given. A published prefix therefore has to be
-  enforced (`http-request deny deny_status 404 unless is_app`), not declared, and four
-  families of scenario collapse onto a single shared file under `haproxy/templates/` —
-  including the whole `*-push-url` family, which mounts its sibling's file verbatim.
+  enforced (`http-request deny deny_status 404 unless is_app`), not declared. Scenarios
+  that differ only in where the backend's context path sits share one file under
+  `haproxy/templates/`: `root-context` and `custom-context` both mount `passthrough.cfg`,
+  and their `-sse` variants both mount `passthrough-sse.cfg`.
 - HAProxy's `http-request` ruleset runs **before** `use_backend`. A `replace-path` in the
   frontend therefore erases the prefix the routing ACL matches on (`multiple-root-context`
   answers 503 `vaadin-in/<NOSRV>` that way), and an unconditional `http-request deny`

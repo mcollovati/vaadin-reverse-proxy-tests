@@ -10,8 +10,10 @@
 #
 # Nothing here configures WebSocket upgrades, because Traefik has no switch for
 # them: every router upgrades when the client asks and proxies plain HTTP
-# otherwise. That is why the *-push-url scenarios need no extra rule, and why
-# the *-sse ones have to remove the client's Upgrade header to refuse.
+# otherwise. That is why this tree has no *-push-location scenarios (the Apache
+# and NGINX ones give the push paths an upgrade-capable block of their own,
+# which here would be the sibling's config again), and why the *-sse ones have
+# to remove the client's Upgrade header to refuse.
 #
 # No respondingTimeouts either, unlike ProxyTimeout 300 (apache-httpd/httpd.conf)
 # and proxy_read_timeout 300s (every NGINX template). The docs suggest there
